@@ -42,31 +42,83 @@ Accept inline args: `--project-plan`, `--requirements`, `--path`, `--feature`, `
 
 ---
 
-## Step 2 — Environment & Tool Check
+## Step 2 — Environment, Tool & MCP Server Check
 
-Before running any tests, verify what's available and what's missing.
+Before running any tests, verify what's available, what's missing, and what MCP servers could enhance testing.
 
-**Check automatically:**
+### 2a. Check Automatically
+
 - Test framework installed? (pytest, Jest, Vitest, go test, JUnit, etc.)
 - Can tests run? Try running existing test suite — report results
 - Database accessible? Check connection configs
 - Can the application start? Try running the entry point
 - Package dependencies installed? Check lock files
+- **MCP servers available?** Check `.mcp.json` or project MCP config for configured servers (Playwright, database, etc.)
 
-**Request from user if missing (ask in ONE batch):**
+### 2b. Detect What's Needed Based on Project Type
+
+| Project Type | Tools Needed | MCP Servers That Help |
+|-------------|-------------|----------------------|
+| Web app with UI | Browser automation, visual testing | **Playwright MCP** for E2E/UI testing |
+| API service | HTTP client, schema validation | Database MCP for data verification |
+| CLI tool | Shell execution, input simulation | — |
+| Full-stack | All of the above | Playwright MCP + Database MCP |
+| Mobile | Device emulation | Playwright MCP (web views) |
+
+### 2c. MCP Server Resolution
+
+If the project needs MCP servers that aren't configured:
+
+1. **Check availability** — look for `.mcp.json`, check if MCP tools are callable
+2. **Identify needed servers** — match project type to the table above
+3. **Ask user in ONE batch** — present all missing tools AND MCP servers together:
+
+```
+To fully test this project, I need:
+
+Tools (CLI):
+  - pytest (not found) — pip install pytest
+  - coverage (not found) — pip install coverage
+
+MCP Servers (enhanced capabilities):
+  - Playwright MCP (not configured) — for UI/E2E browser testing
+    Install: npx @anthropic-ai/claude-code mcp add playwright -- npx -y @playwright/mcp --headless
+  - PostgreSQL MCP (not configured) — for direct database verification
+    Install: npx @anthropic-ai/claude-code mcp add postgres -- npx -y @anthropic-ai/mcp-server-postgres
+
+Install all? Or tell me which to skip — I'll adapt the test strategy.
+```
+
+4. **If user approves** — install and verify each works
+5. **If user declines any** — adapt strategy, document limitations in bug-report.md under "Untested Areas"
+
+### 2d. MCP Server Reference for QA
+
+| MCP Server | QA Purpose | When to Use | Install Command |
+|------------|-----------|-------------|-----------------|
+| Playwright | Browser automation: click, type, navigate, screenshot, verify UI elements | Any project with web UI | `npx @anthropic-ai/claude-code mcp add playwright -- npx -y @playwright/mcp --headless` |
+| Puppeteer | Browser automation (alternative) | If Playwright unavailable | `npx @anthropic-ai/claude-code mcp add puppeteer -- npx -y @anthropic-ai/mcp-server-puppeteer` |
+| PostgreSQL | Direct DB queries, data verification, state checking | Projects using PostgreSQL | `npx @anthropic-ai/claude-code mcp add postgres -- npx -y @anthropic-ai/mcp-server-postgres` |
+| SQLite | Direct DB queries for SQLite databases | Projects using SQLite | `npx @anthropic-ai/claude-code mcp add sqlite -- npx -y @anthropic-ai/mcp-server-sqlite` |
+
+**How to use MCP servers during testing:**
+- **Playwright MCP**: Navigate to pages, fill forms, click buttons, assert text/elements visible, take screenshots as evidence, test responsive layouts
+- **Database MCP**: Query database directly to verify data integrity, check records created/updated/deleted correctly, verify constraints and cascades
+
+### 2e. Traditional Tool Requests (ask in ONE batch with MCP requests)
 
 | Need | Why | Example Request |
 |------|-----|-----------------|
-| Browser automation | UI/E2E testing | "Install Playwright" |
+| Browser automation | UI/E2E testing | "Install Playwright MCP" (preferred) or "Install Playwright" |
 | API testing tool | REST/GraphQL testing | "Install supertest or httpx" |
-| Database client | Data verification | "Provide connection string" |
+| Database client | Data verification | "Install DB MCP" (preferred) or "Provide connection string" |
 | Load testing tool | Performance/NFR testing | "Install k6 or artillery" |
 | Code coverage tool | Coverage measurement | "Install coverage.py or c8" |
 | Security scanner | Static analysis | "Install bandit or eslint-plugin-security" |
 | Container runtime | Testing containers | "Install Docker" |
 | Env vars or secrets | Integration tests | "Create .env.test" |
 
-Only request tools actually needed for the test scope. If a tool can't be installed, adapt the strategy and document every limitation.
+Only request tools actually needed for the test scope. Prefer MCP servers over CLI tools when both options exist — MCP servers integrate directly and provide richer interaction. If a tool can't be installed, adapt the strategy and document every limitation.
 
 ---
 

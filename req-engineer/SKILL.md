@@ -65,6 +65,30 @@ If everything is clear, skip this round entirely and proceed to Step 4.
 
 ---
 
+## Step 3.5 — Tool & MCP Server Check
+
+Before generating prototypes and requirements, check if enhanced tools are available:
+
+1. **Check for Figma MCP** — if the user mentions Figma designs, existing mockups, or a design system:
+   - Check `.mcp.json` for a configured Figma MCP server
+   - If not configured but the user has Figma URLs or files:
+     ```
+     You mentioned Figma designs. I can pull design details directly with the Figma MCP server.
+     Install? npx @anthropic-ai/claude-code mcp add figma -- npx -y @anthropic-ai/mcp-server-figma
+     Or I'll work from your descriptions and generate ASCII wireframes.
+     ```
+   - With Figma MCP: extract actual design specs, colors, spacing, components for more accurate prototypes
+   - Without: rely on user descriptions and generate prototypes manually (default, still works fine)
+
+2. **Check for Browser MCP** — if deep domain research or competitor analysis would help:
+   - Playwright or Puppeteer MCP can visit competitor sites, capture layouts, verify existing systems
+   - Only offer if user mentions "look at how X does it" or "similar to Y website"
+   - Usually WebSearch is sufficient — don't over-recommend browser MCP for requirements
+
+3. **Batch all requests** — if both are needed, ask in one message. If neither is needed, skip this step silently.
+
+---
+
 ## Step 4 — Domain Research (WebSearch)
 
 Run 2-4 targeted WebSearch queries to:

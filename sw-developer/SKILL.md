@@ -35,8 +35,20 @@ Accept inline args: `--project-plan`, `--plan`, `--requirements`, `--task`, `--p
    - Existing tests — framework, patterns, assertion style
    - Existing utilities/helpers to reuse
    - Configuration patterns
-4. **Present the task list** — show all stories/tasks grouped by epic as a numbered checklist. Ask: "Which task should I start with?" or suggest the first based on dependencies.
-5. **If starting a new project** (no existing code), set up scaffolding first:
+4. **Check tools & MCP servers** — verify the development environment has what's needed:
+   - **Package manager** — npm/yarn/pnpm, pip/poetry, go mod, cargo, etc.
+   - **Test framework** — pytest, Jest, Vitest, go test, etc.
+   - **Linter/formatter** — ESLint, Prettier, Black, Ruff, etc.
+   - **Database access** — if the project uses a DB, check if a database MCP server is available for direct interaction (check `.mcp.json`). If not available and needed:
+     ```
+     This project uses [PostgreSQL/SQLite/etc.]. A database MCP server would help me verify data operations directly.
+     Install? npx @anthropic-ai/claude-code mcp add [db-name] -- npx -y @anthropic-ai/mcp-server-[db-name]
+     Or I can work without it using the ORM/CLI tools.
+     ```
+   - **Missing tools** — batch all missing tool requests into ONE message to the user, including both CLI tools and MCP servers
+   - If user declines any tool, adapt and proceed with available tools
+5. **Present the task list** — show all stories/tasks grouped by epic as a numbered checklist. Ask: "Which task should I start with?" or suggest the first based on dependencies.
+6. **If starting a new project** (no existing code), set up scaffolding first:
    - Initialize directory structure (see below)
    - Package manager config
    - Linter and formatter

@@ -67,6 +67,73 @@ If documents exist, don't redo completed phases. Ask: "I see [X, Y, Z] already d
 
 ---
 
+## Step 0.5 — Tool & MCP Server Resolution
+
+After detecting intent but BEFORE confirming the plan, check what tools and MCP servers the pipeline will need. Each skill has its own tool requirements — resolve them upfront so agents don't get blocked mid-pipeline.
+
+### How to Check
+
+1. **List available MCP servers** — check `.mcp.json` or project MCP config for already-configured servers
+2. **Match pipeline needs to tools** — based on the detected command, determine which skills will run and what they need:
+
+| Pipeline Phase | Skill | May Need |
+|---------------|-------|----------|
+| Requirements | req-engineer | Figma MCP (if UI project with Figma designs) |
+| Architecture | sw-architect | — (uses WebSearch only) |
+| Planning | proj-manager | — |
+| Development | sw-developer | Database MCP, package manager, test framework |
+| Code Review | code-reviewer | Linting/SAST tools (Semgrep, ESLint security) |
+| QA Testing | qa-engineer | Playwright MCP (UI projects), test frameworks, API testing tools |
+| DevOps | devops-engineer | Docker, cloud CLI, container runtime |
+| Documentation | tech-writer | — |
+
+3. **Detect project type** — if the project has a UI (web/mobile/desktop), Playwright MCP and Figma MCP become important. If API-only, they're not needed.
+4. **Batch all missing tools into ONE request** — don't ask skill-by-skill. Present everything needed at once:
+
+```
+Before we start, this pipeline will need a few tools. Here's what I found:
+
+Available:
+  - Node.js / npm
+  - pytest
+
+Missing (needed for this project):
+  - Playwright MCP — for UI/E2E testing during QA phase
+  - PostgreSQL MCP — for database verification during testing
+
+Install them now? I'll run:
+  1. npx @anthropic-ai/claude-code mcp add playwright -- npx -y @playwright/mcp --headless
+  2. npx @anthropic-ai/claude-code mcp add postgres -- npx -y @anthropic-ai/mcp-server-postgres
+
+Or skip — I'll adapt the strategy and note any limitations.
+```
+
+5. **If user approves** — install and verify each tool works before proceeding
+6. **If user declines** — proceed but pass the limitation to each downstream skill so they can adapt their strategy
+7. **Pass tool availability to agents** — include in the agent prompt template:
+
+```
+Available tools/MCP servers:
+- [list of confirmed available tools]
+- [list of tools user declined — adapt strategy]
+```
+
+### MCP Server Installation Reference
+
+| MCP Server | Purpose | Install Command |
+|------------|---------|-----------------|
+| Playwright | Browser automation, UI/E2E testing | `npx @anthropic-ai/claude-code mcp add playwright -- npx -y @playwright/mcp --headless` |
+| Puppeteer | Browser automation (alternative to Playwright) | `npx @anthropic-ai/claude-code mcp add puppeteer -- npx -y @anthropic-ai/mcp-server-puppeteer` |
+| PostgreSQL | Database operations, data verification | `npx @anthropic-ai/claude-code mcp add postgres -- npx -y @anthropic-ai/mcp-server-postgres` |
+| SQLite | Lightweight database operations | `npx @anthropic-ai/claude-code mcp add sqlite -- npx -y @anthropic-ai/mcp-server-sqlite` |
+| Figma | Design-to-code, design review | `npx @anthropic-ai/claude-code mcp add figma -- npx -y @anthropic-ai/mcp-server-figma` |
+| GitHub | PR management, issue tracking | `npx @anthropic-ai/claude-code mcp add github -- npx -y @anthropic-ai/mcp-server-github` |
+| Filesystem | Extended file operations | `npx @anthropic-ai/claude-code mcp add filesystem -- npx -y @anthropic-ai/mcp-server-filesystem` |
+
+If the user has a different MCP server they prefer (e.g., a custom database MCP), use theirs instead. The goal is capability, not specific packages.
+
+---
+
 ## Step 1 — Confirm the Plan
 
 Before starting, briefly tell the user what will happen:
@@ -252,6 +319,10 @@ Input files:
 - plan.md: [path] (if exists)
 - project-plan.md: [path] (if exists)
 - Existing code: [path] (if exists)
+
+Available tools/MCP servers:
+- [List confirmed available tools and MCP servers]
+- [List declined tools with note: "not available — adapt strategy"]
 
 Your task:
 [Specific instruction for this phase]

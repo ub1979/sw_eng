@@ -34,7 +34,30 @@ Accept inline args: `--plan`, `--path`, `--cloud` (aws/gcp/azure/self-hosted), `
    - Database — what DB, migration scripts, seed data
    - Tests — how to run them, what framework
    - Build process — compiled? bundler? transpiler?
-3. **Ask one batch of questions (skip what's clear):**
+3. **Check tools & MCP servers** — verify DevOps toolchain availability:
+
+   **Check automatically:**
+   - Docker installed? (`docker --version`)
+   - Docker Compose available? (`docker compose version`)
+   - Cloud CLI installed? (`aws --version`, `gcloud --version`, `az --version`)
+   - Terraform/Pulumi installed? (if IaC needed)
+   - GitHub CLI? (`gh --version`) — for CI/CD pipeline setup
+   - **MCP servers configured?** Check `.mcp.json` for GitHub MCP, cloud provider MCPs
+
+   **Offer to install missing tools and MCP servers in ONE batch:**
+
+   | Tool / MCP Server | Purpose | Install Command |
+   |-------------------|---------|-----------------|
+   | Docker | Containerization | Platform-specific: `brew install docker` / `apt install docker.io` |
+   | GitHub MCP | PR creation, CI/CD management, issue tracking | `npx @anthropic-ai/claude-code mcp add github -- npx -y @anthropic-ai/mcp-server-github` |
+   | Cloud provider CLI | Infrastructure management | `brew install awscli` / `brew install --cask google-cloud-sdk` |
+
+   If a tool can't be installed (e.g., Docker on a restricted machine), adapt strategy:
+   - No Docker → generate Dockerfiles but note they're untested, provide `docker build` commands for the user
+   - No cloud CLI → generate IaC configs but user must apply them manually
+   - No GitHub MCP → use `gh` CLI or create files manually
+
+4. **Ask one batch of questions (skip what's clear):**
    - Cloud provider preference? (AWS / GCP / Azure / self-hosted / Vercel / Railway / Fly.io)
    - Domain name? (for SSL/DNS)
    - Expected traffic? (scaling strategy)

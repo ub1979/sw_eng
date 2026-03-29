@@ -35,6 +35,21 @@ Accept inline args: `--plan`, `--project-plan`, `--path`, `--task`, `--files`, `
    - Understand existing patterns, naming conventions, project structure
    - Identify files changed for this task
    - Read related files that interact with the changed code
+4. **Check for review-enhancing tools & MCP servers:**
+   - **Linting/SAST tools available?** Check for ESLint, Semgrep, Bandit (Python), Clippy (Rust), etc.
+   - **Security scanners?** Check for `npm audit`, `pip-audit`, Trivy, Snyk
+   - **MCP servers configured?** Check `.mcp.json` for any servers that could assist (GitHub MCP for PR context, database MCP for schema verification)
+   - If critical tools are missing for the review scope, ask the user in ONE batch:
+     ```
+     For a thorough review, these tools would help:
+
+     Missing:
+       - Semgrep (SAST scanning) — pip install semgrep / brew install semgrep
+       - npm audit (already available via npm)
+
+     Install Semgrep for static security analysis? Or I'll do manual code review for security.
+     ```
+   - If user declines, proceed with manual review and note "automated SAST not performed" in the review report
 
 ---
 

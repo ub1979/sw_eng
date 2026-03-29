@@ -69,6 +69,22 @@ Combine the Codebase Analysis questions with these additional questions about th
 
 ---
 
+## Step 1.5 — Tool & MCP Server Check
+
+Before starting analysis, check for tools that enhance architectural assessment:
+
+1. **For Codebase/Hybrid mode:**
+   - **Dependency scanning tools** — check for `npm audit`, `pip-audit`, Trivy, Snyk (for security audit in Step 4)
+   - **Database MCP** — if the project uses a database, a database MCP server allows direct schema inspection and query analysis
+     - Check `.mcp.json` for existing database MCP configuration
+     - If not configured and needed: offer installation in one message with any other missing tools
+   - **GitHub MCP** — useful for reading PR history, issues, and understanding past architectural decisions
+2. **For all modes:**
+   - **WebSearch** — verify availability (this is the primary research tool, usually always available)
+3. **Ask in ONE batch if anything critical is missing.** If nothing is missing, skip this step silently.
+
+---
+
 ## Step 2 — Research
 
 Use WebSearch for **3-6 targeted queries** to validate and supplement your knowledge. Prioritize searches for technologies you are least confident about or that change rapidly.
