@@ -1,0 +1,13 @@
+{
+  "name": "funcoding-skills",
+  "owner": {
+    "name": "u"
+  },
+  "plugins": [
+    {
+      "name": "sdlc",
+      "source": ".",
+      "description": "Full software development lifecycle orchestrator — requirements, architecture, planning, development, code review, QA, DevOps, and documentation"
+    }
+  ]
+}
