@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDLC Pipeline Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="/static/css/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@14.1.3/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+  <script defer src="/static/js/api.js"></script>
+  <script defer src="/static/js/sse.js"></script>
+  <script defer src="/static/js/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
+</head>
+<body x-data="app()" x-init="initApp()">
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <template x-if="view === 'welcome'">
+    <div id="main" class="ds-hero" role="main">
+      <h1 class="ds-hero__title">SDLC Pipeline Dashboard</h1>
+      <p class="ds-hero__subtitle">Turn your ideas into working software — just describe what you want.</p>
+      <button class="ds-button ds-button--primary ds-button--lg" @click="startTutorial()">Start Building</button>
+      <p style="margin-top:var(--ds-space-6);color:var(--ds-color-text-secondary);font-size:var(--ds-font-size-small);">
+        Works with: Ollama | Claude | Gemini
+      </p>
+    </div>
+  </template>
+
+  <template x-if="view === 'tutorial'">
+    <div id="main" class="ds-modal-overlay" role="dialog" aria-modal="true" aria-label="Tutorial" @keydown.escape.window="skipTutorial()">
+      <div class="ds-modal" x-ref="tutorialModal">
+        <div class="ds-modal__header">
+          <h2 class="ds-section__title" x-text="tutorialTitle()"></h2>
+          <button class="ds-button ds-button--secondary ds-button--sm" @click="skipTutorial()" aria-label="Close tutorial">Skip</button>
+        </div>
+        <div class="ds-modal__body ds-tutorial">
+          <div x-show="tutorialStep === 1">
+            <p>This tool runs a full software development lifecycle pipeline using AI agents. It writes requirements, designs architecture, plans tasks, writes code, reviews, tests, deploys, and documents your project — automatically.</p>
+          </div>
+          <div x-show="tutorialStep === 2">
+            <p>Choose the AI that will build your project.</p>
+            <div class="ds-provider-grid">
+              <div class="ds-card ds-provider-card" :class="{ 'ds-provider-card--selected': selectedProvider === 'ollama' }" @click="selectedProvider = 'ollama'" role="button" tabindex="0" @keydown.enter="selectedProvider = 'ollama'" aria-label="Select Ollama provider">
+                <div class="ds-provider-card__icon">🤖</div>
+                <h3 class="ds-provider-card__name">Ollama</h3>
+                <p class="ds-provider-card__desc">Runs locally on your machine. Free and private.</p>
+              </div>
+              <div class="ds-card ds-provider-card" :class="{ 'ds-provider-card--selected': selectedProvider === 'claude' }" @click="selectedProvider = 'claude'" role="button" tabindex="0" @keydown.enter="selectedProvider = 'claude'" aria-label="Select Claude provider">
+                <div class="ds-provider-card__icon">✨</div>
+                <h3 class="ds-provider-card__name">Claude</h3>
+                <p class="ds-provider-card__desc">Anthropic's Claude Code CLI.</p>
+              </div>
+              <div class="ds-card ds-provider-card" :class="{ 'ds-provider-card--selected': selectedProvider === 'gemini' }" @click="selectedProvider = 'gemini'" role="button" tabindex="0" @keydown.enter="selectedProvider = 'gemini'" aria-label="Select Gemini provider">
+                <div class="ds-provider-card__icon">🔮</div>
+                <h3 class="ds-provider-card__name">Gemini</h3>
+                <p class="ds-provider-card__desc">Google's Gemini / Antigravity CLI.</p>
+              </div>
+            </div>
+          </div>
+          <div x-show="tutorialStep === 3">
+            <p>Choose how thorough the build should be. You can change this anytime in Settings before starting.</p>
+            <div class="ds-provider-grid">
+              <template x-for="name in ['mvp','small','standard','production']" :key="'tut-'+name">
+                <div class="ds-card ds-provider-card"
+                  :class="{ 'ds-provider-card--selected': selectedPreset === name }"
+                  @click="applyPreset(name)" role="button" tabindex="0"
+                  @keydown.enter="applyPreset(name)" :aria-label="'Select ' + presetLabel(name)">
+                  <div class="ds-provider-card__icon" x-text="{mvp:'⚡',small:'📦',standard:'🛠️',production:'🏭'}[name]"></div>
+                  <h3 class="ds-provider-card__name" x-text="presetLabel(name)"></h3>
+                  <p class="ds-provider-card__desc" x-text="{mvp:'Fastest. Skips load tests, DAST, devops, docs.',small:'Adds full e2e tests and docs.',standard:'Recommended. Adds accessibility and devops.',production:'Most thorough. Everything incl. load test + DAST.'}[name]"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div x-show="tutorialStep === 4">
+            <p>Describe what you want to build in plain English. Be as specific or as high-level as you like — the requirements engineer will clarify details.</p>
+            <p style="margin-top:var(--ds-space-4);color:var(--ds-color-text-tertiary);font-size:var(--ds-font-size-small);">Example: "I want a simple portfolio website for my photography business with a gallery and contact form."</p>
+          </div>
+          <div x-show="tutorialStep === 5">
+            <p>Hit "Start Pipeline" and watch the agents work in real time. You'll see progress updates, live logs, and checkpoints where you can review and approve before continuing.</p>
+          </div>
+          <div class="ds-tutorial__steps" aria-label="Tutorial progress">
+            <template x-for="n in 5" :key="n">
+              <div class="ds-tutorial__dot" :class="{ 'ds-tutorial__dot--active': n === tutorialStep }"></div>
+            </template>
+          </div>
+        </div>
+        <div class="ds-modal__footer">
+          <button class="ds-button ds-button--secondary" x-show="tutorialStep > 1" @click="tutorialStep--">Previous</button>
+          <button class="ds-button ds-button--primary" x-show="tutorialStep < 5" @click="tutorialStep++">Next</button>
+          <button class="ds-button ds-button--primary" x-show="tutorialStep === 5" @click="finishTutorial()">Get Started</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="view === 'dashboard'">
+    <div id="main" role="main">
+      <header class="ds-header">
+        <h1 class="ds-header__title">SDLC Dashboard</h1>
+        <div style="display:flex;gap:var(--ds-space-3);align-items:center;">
+          <span class="ds-badge" :class="statusBadgeClass(pipeline.status)" x-text="pipeline.status ? pipeline.status.toUpperCase() : 'IDLE'" role="status" aria-live="polite"></span>
+          <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Toggle history sidebar">History</button>
+        </div>
+      </header>
+
+      <div class="ds-layout">
+        <aside class="ds-sidebar" :class="{ 'ds-sidebar--open': showHistory }" aria-label="History sidebar">
+          <div class="ds-sidebar__header">
+            <h2 class="ds-section__title" style="margin:0;">Project History</h2>
+            <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Close history">Close</button>
+          </div>
+          <div class="ds-sidebar__body">
+            <template x-for="item in history" :key="item.id">
+              <div class="ds-history-item" :class="{ 'ds-history-item--active': pipeline.id === item.id }">
+                <div class="ds-history-item__info" @click="viewHistoryPipeline(item.id)" role="button" tabindex="0" @keydown.enter="viewHistoryPipeline(item.id)">
+                  <div class="ds-history-item__name" x-text="item.project_name"></div>
+                  <div class="ds-history-item__meta">
+                    <span class="ds-badge" :class="historyStatusBadgeClass(item.status)" x-text="item.status ? item.status.toUpperCase() : 'UNKNOWN'"></span>
+                    <span x-text="(item.provider || '') + ' / ' + (item.model || '')"></span>
+                    <span x-text="formatDuration(pipelineDurationMs(item))"></span>
+                  </div>
+                </div>
+                <div class="ds-history-item__actions">
+                  <template x-if="item.status === 'checkpoint'">
+                    <button class="ds-button ds-button--primary ds-button--sm" @click="resumePipeline(item.id)" aria-label="Resume pipeline">Resume</button>
+                  </template>
+                  <button class="ds-button ds-button--danger ds-button--sm" @click="confirmDeletePipeline(item.id, item.project_name)" aria-label="Delete pipeline">Delete</button>
+                </div>
+              </div>
+            </template>
+            <p x-show="history.length === 0" style="color:var(--ds-color-text-tertiary);text-align:center;padding:var(--ds-space-8) 0;">No past runs.</p>
+          </div>
+        </aside>
+
+        <div class="ds-container ds-container--with-sidebar" :class="{ 'ds-container--sidebar-open': showHistory }">
+          <section class="ds-section">
+            <h2 class="ds-section__title">Select AI Model</h2>
+            <select class="ds-select" x-model="selectedProvider" @focus="checkProviderHealth()" aria-label="Model provider">
+              <option value="ollama">Ollama</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+            </select>
+            <select class="ds-select" x-model="selectedModel" style="margin-top:var(--ds-space-3);" aria-label="Model">
+              <option value="" disabled>Select model</option>
+              <template x-for="m in providerModels" :key="m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+            <label style="display:block;margin-top:var(--ds-space-3);color:var(--ds-color-text-secondary);font-size:0.85rem;">
+              Fast model for mechanical phases (optional — speeds up planning, devops, docs)
+            </label>
+            <select class="ds-select" x-model="fastModel" style="margin-top:var(--ds-space-2);" aria-label="Fast model">
+              <option value="">Use selected model for everything</option>
+              <template x-for="m in providerModels" :key="'fast-'+m">
+                <option :value="m" x-text="m"></option>
+              </template>
+            </select>
+            <p class="ds-inline-error" x-show="providerError" x-text="providerError" role="alert"></p>
+          </section>
+
+          <section class="ds-section">
+            <h2 class="ds-section__title">Build Type</h2>
+            <p style="color:var(--ds-color-text-secondary);font-size:0.9rem;margin-bottom:var(--ds-space-3);">
+              Pick how thorough the build should be. Gate phases (architecture, code review) always run — these control the optional work.
+            </p>
+            <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;">
+              <template x-for="name in ['mvp','small','standard','production']" :key="name">
+                <button type="button"
+                  class="ds-button"
+                  :class="selectedPreset === name ? 'ds-button--primary' : 'ds-button--secondary'"
+                  @click="applyPreset(name)"
+                  x-text="presetLabel(name)"></button>
+              </template>
+            </div>
+
+            <button type="button" class="ds-button ds-button--secondary" style="margin-top:var(--ds-space-3);"
+              @click="showBuildOptions = !showBuildOptions"
+              x-text="showBuildOptions ? 'Hide details' : 'Customize what to run / skip'"></button>
+
+            <div x-show="showBuildOptions" style="margin-top:var(--ds-space-3);display:grid;grid-template-columns:1fr 1fr;gap:var(--ds-space-2);">
+              <template x-for="opt in [
+                  {k:'code_review', label:'Code review'},
+                  {k:'qa', label:'QA testing'},
+                  {k:'e2e_tests', label:'Full end-to-end tests'},
+                  {k:'load_test', label:'Load / performance testing'},
+                  {k:'dast', label:'DAST (dynamic security)'},
+                  {k:'security_scan', label:'Security scan (SAST + deps)'},
+                  {k:'accessibility', label:'Accessibility checks'},
+                  {k:'devops', label:'DevOps / deployment'},
+                  {k:'docs', label:'Documentation'}
+                ]" :key="opt.k">
+                <label style="display:flex;align-items:center;gap:var(--ds-space-2);color:var(--ds-color-text-secondary);">
+                  <input type="checkbox" x-model="profile[opt.k]" :aria-label="opt.label">
+                  <span x-text="opt.label"></span>
+                </label>
+              </template>
+            </div>
+          </section>
+
+          <section class="ds-section">
+            <h2 class="ds-section__title">Describe Your Project</h2>
+            <textarea class="ds-textarea" x-model="projectDescription" placeholder="Describe what you want to build in plain English..." aria-label="Project description"></textarea>
+          </section>
+
+          <section class="ds-section" style="text-align:center;">
+            <button class="ds-button ds-button--primary ds-button--lg" :disabled="!canStartPipeline()" @click="startPipeline()">Start Pipeline</button>
+          </section>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="view === 'pipeline'">
+    <div id="main" role="main">
+      <header class="ds-header">
+        <div>
+          <h1 class="ds-header__title" x-text="pipeline.project_name || 'Pipeline Run'"></h1>
+          <p style="margin:var(--ds-space-1) 0 0;color:var(--ds-color-text-secondary);font-size:var(--ds-font-size-small);">
+            Model: <span x-text="(pipeline.provider || '') + ' / ' + (pipeline.model || '')"></span>
+            <span style="margin-left:var(--ds-space-4);" x-text="'Elapsed: ' + formatElapsed(elapsedSeconds)"></span>
+          </p>
+        </div>
+        <div style="display:flex;gap:var(--ds-space-3);align-items:center;">
+          <span class="ds-badge" :class="statusBadgeClass(pipeline.status)" x-text="pipeline.status ? pipeline.status.toUpperCase() : 'IDLE'" role="status" aria-live="polite"></span>
+          <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Toggle history sidebar">History</button>
+          <button class="ds-button ds-button--secondary ds-button--sm" @click="backToDashboard()" aria-label="Back to dashboard">Back</button>
+        </div>
+      </header>
+
+      <div class="ds-layout">
+        <aside class="ds-sidebar" :class="{ 'ds-sidebar--open': showHistory }" aria-label="History sidebar">
+          <div class="ds-sidebar__header">
+            <h2 class="ds-section__title" style="margin:0;">Project History</h2>
+            <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Close history">Close</button>
+          </div>
+          <div class="ds-sidebar__body">
+            <template x-for="item in history" :key="item.id">
+              <div class="ds-history-item" :class="{ 'ds-history-item--active': pipeline.id === item.id }">
+                <div class="ds-history-item__info" @click="viewHistoryPipeline(item.id)" role="button" tabindex="0" @keydown.enter="viewHistoryPipeline(item.id)">
+                  <div class="ds-history-item__name" x-text="item.project_name"></div>
+                  <div class="ds-history-item__meta">
+                    <span class="ds-badge" :class="historyStatusBadgeClass(item.status)" x-text="item.status ? item.status.toUpperCase() : 'UNKNOWN'"></span>
+                    <span x-text="(item.provider || '') + ' / ' + (item.model || '')"></span>
+                    <span x-text="formatDuration(pipelineDurationMs(item))"></span>
+                  </div>
+                </div>
+                <div class="ds-history-item__actions">
+                  <template x-if="item.status === 'checkpoint'">
+                    <button class="ds-button ds-button--primary ds-button--sm" @click="resumePipeline(item.id)" aria-label="Resume pipeline">Resume</button>
+                  </template>
+                  <button class="ds-button ds-button--danger ds-button--sm" @click="confirmDeletePipeline(item.id, item.project_name)" aria-label="Delete pipeline">Delete</button>
+                </div>
+              </div>
+            </template>
+            <p x-show="history.length === 0" style="color:var(--ds-color-text-tertiary);text-align:center;padding:var(--ds-space-8) 0;">No past runs.</p>
+          </div>
+        </aside>
+
+        <div class="ds-container ds-container--with-sidebar" :class="{ 'ds-container--sidebar-open': showHistory }">
+          <section class="ds-section">
+            <div class="ds-progress" role="progressbar" :aria-valuenow="pipeline.overall_progress || 0" aria-valuemin="0" aria-valuemax="100" aria-label="Pipeline progress">
+              <div class="ds-progress__fill" :style="`width:${pipeline.overall_progress || 0}%`"></div>
+            </div>
+            <p style="text-align:right;font-size:var(--ds-font-size-caption);color:var(--ds-color-text-tertiary);margin-top:var(--ds-space-2);" x-text="(pipeline.overall_progress || 0) + '%'"></p>
+          </section>
+
+          <section class="ds-section">
+            <h2 class="ds-section__title">Agent Pipeline</h2>
+            <div class="ds-agent-grid">
+              <template x-for="agent in agents" :key="agent.agent_name">
+                <div class="ds-card ds-agent-card"
+                     :class="agentCardClass(agent)"
+                     @click="toggleAgent(agent.agent_name)"
+                     role="button"
+                     tabindex="0"
+                     :aria-label="'Agent: ' + formatAgentName(agent.agent_name) + ', Status: ' + agent.status"
+                     @keydown.enter="toggleAgent(agent.agent_name)">
+                  <div class="ds-agent-card__pulse"></div>
+                  <div class="ds-agent-card__header">
+                    <h3 class="ds-agent-card__name" x-text="formatAgentName(agent.agent_name)"></h3>
+                    <span class="ds-badge" :class="agentBadgeClass(agent.status)" x-text="agent.status.toUpperCase()"></span>
+                  </div>
+                  <div class="ds-agent-card__body">
+                    <span class="ds-agent-card__icon" x-text="agentIcon(agent)"></span>
+                    <p class="ds-agent-card__meta" x-show="agent.duration_ms" x-text="formatDuration(agent.duration_ms)"></p>
+                    <template x-if="agent.status === 'failed'">
+                      <button class="ds-button ds-button--danger ds-button--sm" style="margin-top:var(--ds-space-2);" @click.stop="retryFailedAgent(agent.agent_name)" aria-label="Retry agent">Retry</button>
+                    </template>
+                    <template x-if="agent.status === 'pending' && pipeline.current_agent === agent.agent_name">
+                      <p class="ds-agent-card__hint" style="margin-top:var(--ds-space-2);">Waiting for approval</p>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <section class="ds-section" x-show="expandedAgent">
+            <h2 class="ds-section__title" x-text="'Agent Details: ' + formatAgentName(expandedAgent)"></h2>
+            <div class="ds-card">
+              <p style="color:var(--ds-color-text-secondary);" x-text="agentDetails(expandedAgent)"></p>
+              <template x-if="agents.find(a => a.agent_name === expandedAgent)?.artifact_paths?.length">
+                <div style="margin-top:var(--ds-space-4);">
+                  <h4 style="font-size:var(--ds-font-size-small);color:var(--ds-color-text-tertiary);margin:0 0 var(--ds-space-2);">Artifacts</h4>
+                  <template x-for="path in agents.find(a => a.agent_name === expandedAgent).artifact_paths" :key="path">
+                    <div class="ds-artifact-link" @click="selectArtifact(path)" role="button" tabindex="0" @keydown.enter="selectArtifact(path)" style="cursor:pointer;color:var(--ds-color-accent);">
+                      <span x-text="artifactIcon(path)"></span>
+                      <span x-text="path"></span>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <section class="ds-section" x-show="selectedArtifact">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--ds-space-4);">
+              <h2 class="ds-section__title" style="margin:0;">Artifact Preview</h2>
+              <div style="display:flex;gap:var(--ds-space-3);">
+                <button class="ds-button ds-button--secondary ds-button--sm" @click="selectedArtifact = null; artifactPreview = null;" aria-label="Close artifact preview">Close</button>
+                <button class="ds-button ds-button--secondary ds-button--sm" @click="downloadArtifact(selectedArtifact.path)" aria-label="Download artifact">Download</button>
+              </div>
+            </div>
+            <div class="ds-card ds-artifact-preview">
+              <div x-show="artifactPreview?.type === 'markdown'" x-html="artifactPreview?.html" class="ds-markdown-body"></div>
+              <pre x-show="artifactPreview?.type === 'code'"><code :class="'language-' + artifactPreview?.language" x-text="artifactPreview?.content"></code></pre>
+              <pre x-show="artifactPreview?.type === 'text'"><code x-text="artifactPreview?.content"></code></pre>
+            </div>
+          </section>
+
+          <section class="ds-section">
+            <h2 class="ds-section__title">Live Log</h2>
+            <div class="ds-log" role="log" aria-live="polite" aria-atomic="false" x-ref="logPanel" @scroll="onLogScroll()">
+              <template x-for="line in logs" :key="line.id">
+                <p class="ds-log__line"><span class="ds-log__timestamp" x-text="line.ts"></span><span x-text="line.msg"></span></p>
+              </template>
+            </div>
+            <div style="display:flex;gap:var(--ds-space-3);margin-top:var(--ds-space-3);align-items:center;">
+              <button class="ds-button ds-button--secondary ds-button--sm" @click="copyLogs()" aria-label="Copy logs to clipboard">Copy</button>
+              <span x-show="!logAutoScroll" style="color:var(--ds-color-text-tertiary);font-size:var(--ds-font-size-caption);">Auto-scroll paused</span>
+            </div>
+          </section>
+
+          <section class="ds-section" x-show="pipeline.status === 'completed' || pipeline.status === 'failed'">
+            <div style="display:flex;gap:var(--ds-space-3);flex-wrap:wrap;">
+              <button class="ds-button ds-button--secondary" @click="loadArtifacts()" aria-label="Browse artifacts">Browse Artifacts</button>
+              <button class="ds-button ds-button--primary" @click="downloadAll()" aria-label="Download all artifacts as ZIP">Download All as ZIP</button>
+            </div>
+            <div x-show="artifacts.length > 0" style="margin-top:var(--ds-space-4);">
+              <div class="ds-file-tree">
+                <template x-for="art in artifacts" :key="art.path">
+                  <div class="ds-file-tree__item" @click="selectArtifact(art.path)" role="button" tabindex="0" @keydown.enter="selectArtifact(art.path)">
+                    <span x-text="artifactIcon(art.path)"></span>
+                    <span x-text="art.path"></span>
+                    <span style="margin-left:auto;color:var(--ds-color-text-tertiary);font-size:var(--ds-font-size-caption);" x-text="(art.size / 1024).toFixed(1) + ' KB'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="ds-modal-overlay" x-show="showCheckpointModal" x-transition.opacity.duration.200ms style="display:none;" @click.self="closeCheckpointModal()">
+        <div class="ds-modal ds-modal--wide" role="dialog" aria-modal="true" aria-label="Checkpoint approval" x-ref="checkpointModal" @keydown="onCheckpointKeydown($event)">
+          <div class="ds-modal__header">
+            <div>
+              <h2 class="ds-section__title" style="margin:0;">Checkpoint</h2>
+              <p style="margin:var(--ds-space-1) 0 0;color:var(--ds-color-text-secondary);font-size:var(--ds-font-size-small);">
+                <span x-text="formatAgentName(pipeline.current_agent)"></span> is complete. Review the output below before continuing.
+              </p>
+            </div>
+          </div>
+          <div class="ds-modal__body">
+            <div class="ds-card ds-artifact-preview" style="max-height:50vh;overflow:auto;">
+              <div x-show="checkpointArtifact?.content_type === 'text/markdown'" x-html="checkpointArtifact ? (window.marked ? window.marked.parse(checkpointArtifact.content) : checkpointArtifact.content) : ''" class="ds-markdown-body"></div>
+              <pre x-show="checkpointArtifact?.language"><code :class="'language-' + checkpointArtifact?.language" x-text="checkpointArtifact?.content"></code></pre>
+              <pre x-show="!checkpointArtifact?.language && checkpointArtifact?.content_type !== 'text/markdown'"><code x-text="checkpointArtifact?.content"></code></pre>
+              <p x-show="!checkpointArtifact" style="color:var(--ds-color-text-tertiary);">Loading artifact...</p>
+            </div>
+            <div x-show="showFeedbackArea" style="margin-top:var(--ds-space-4);">
+              <label for="feedback-textarea" style="display:block;font-size:var(--ds-font-size-small);color:var(--ds-color-text-secondary);margin-bottom:var(--ds-space-2);">Request changes</label>
+              <textarea id="feedback-textarea" class="ds-textarea" x-model="checkpointFeedback" placeholder="Describe what needs to change..." x-ref="feedbackTextarea" aria-label="Feedback text"></textarea>
+            </div>
+          </div>
+          <div class="ds-modal__footer">
+            <button class="ds-button ds-button--secondary" x-show="!showFeedbackArea" @click="showFeedback()">Request Changes</button>
+            <button class="ds-button ds-button--secondary" x-show="showFeedbackArea" @click="closeCheckpointModal()">Cancel</button>
+            <button class="ds-button ds-button--primary" x-show="showFeedbackArea" @click="submitFeedbackAndClose()">Submit Feedback</button>
+            <button class="ds-button ds-button--primary" x-show="!showFeedbackArea" @click="approveCheckpointAndClose()">Approve & Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="view === 'completion'">
+    <div id="main" role="main">
+      <header class="ds-header">
+        <h1 class="ds-header__title" x-text="'Pipeline Complete — ' + (pipeline.project_name || '')"></h1>
+        <div style="display:flex;gap:var(--ds-space-3);">
+          <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Toggle history sidebar">History</button>
+          <button class="ds-button ds-button--primary ds-button--sm" @click="backToDashboard()" aria-label="Start new project">Start New Project</button>
+        </div>
+      </header>
+      <div class="ds-layout">
+        <aside class="ds-sidebar" :class="{ 'ds-sidebar--open': showHistory }" aria-label="History sidebar">
+          <div class="ds-sidebar__header">
+            <h2 class="ds-section__title" style="margin:0;">Project History</h2>
+            <button class="ds-button ds-button--secondary ds-button--sm" @click="toggleHistory()" aria-label="Close history">Close</button>
+          </div>
+          <div class="ds-sidebar__body">
+            <template x-for="item in history" :key="item.id">
+              <div class="ds-history-item" :class="{ 'ds-history-item--active': pipeline.id === item.id }">
+                <div class="ds-history-item__info" @click="viewHistoryPipeline(item.id)" role="button" tabindex="0" @keydown.enter="viewHistoryPipeline(item.id)">
+                  <div class="ds-history-item__name" x-text="item.project_name"></div>
+                  <div class="ds-history-item__meta">
+                    <span class="ds-badge" :class="historyStatusBadgeClass(item.status)" x-text="item.status ? item.status.toUpperCase() : 'UNKNOWN'"></span>
+                    <span x-text="(item.provider || '') + ' / ' + (item.model || '')"></span>
+                    <span x-text="formatDuration(pipelineDurationMs(item))"></span>
+                  </div>
+                </div>
+                <div class="ds-history-item__actions">
+                  <button class="ds-button ds-button--danger ds-button--sm" @click="confirmDeletePipeline(item.id, item.project_name)" aria-label="Delete pipeline">Delete</button>
+                </div>
+              </div>
+            </template>
+            <p x-show="history.length === 0" style="color:var(--ds-color-text-tertiary);text-align:center;padding:var(--ds-space-8) 0;">No past runs.</p>
+          </div>
+        </aside>
+
+        <div class="ds-container ds-container--with-sidebar" :class="{ 'ds-container--sidebar-open': showHistory }">
+          <div style="text-align:center;padding:var(--ds-space-12) 0;">
+            <p style="font-size:var(--ds-font-size-h2);color:var(--ds-color-success);margin-bottom:var(--ds-space-6);">Pipeline Complete</p>
+            <p style="color:var(--ds-color-text-secondary);margin-bottom:var(--ds-space-4);">
+              Duration: <span x-text="formatDuration(pipelineDurationMs(pipeline))"></span>
+              | Model: <span x-text="(pipeline.provider || '') + ' / ' + (pipeline.model || '')"></span>
+            </p>
+            <div style="display:flex;gap:var(--ds-space-3);justify-content:center;flex-wrap:wrap;">
+              <button class="ds-button ds-button--secondary" @click="loadArtifacts()" aria-label="Browse artifacts">Browse Artifacts</button>
+              <button class="ds-button ds-button--primary" @click="downloadAll()" aria-label="Download all artifacts as ZIP">Download All as ZIP</button>
+            </div>
+            <div x-show="artifacts.length > 0" style="margin-top:var(--ds-space-6);text-align:left;max-width:640px;margin-left:auto;margin-right:auto;">
+              <div class="ds-file-tree">
+                <template x-for="art in artifacts" :key="art.path">
+                  <div class="ds-file-tree__item" @click="selectArtifact(art.path)" role="button" tabindex="0" @keydown.enter="selectArtifact(art.path)">
+                    <span x-text="artifactIcon(art.path)"></span>
+                    <span x-text="art.path"></span>
+                    <span style="margin-left:auto;color:var(--ds-color-text-tertiary);font-size:var(--ds-font-size-caption);" x-text="(art.size / 1024).toFixed(1) + ' KB'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <section class="ds-section" x-show="selectedArtifact" style="text-align:left;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--ds-space-4);">
+                <h2 class="ds-section__title" style="margin:0;">Artifact Preview</h2>
+                <div style="display:flex;gap:var(--ds-space-3);">
+                  <button class="ds-button ds-button--secondary ds-button--sm" @click="selectedArtifact = null; artifactPreview = null;" aria-label="Close artifact preview">Close</button>
+                  <button class="ds-button ds-button--secondary ds-button--sm" @click="downloadArtifact(selectedArtifact.path)" aria-label="Download artifact">Download</button>
+                </div>
+              </div>
+              <div class="ds-card ds-artifact-preview">
+                <div x-show="artifactPreview?.type === 'markdown'" x-html="artifactPreview?.html" class="ds-markdown-body"></div>
+                <pre x-show="artifactPreview?.type === 'code'"><code :class="'language-' + artifactPreview?.language" x-text="artifactPreview?.content"></code></pre>
+                <pre x-show="artifactPreview?.type === 'text'"><code x-text="artifactPreview?.content"></code></pre>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+</body>
+</html>

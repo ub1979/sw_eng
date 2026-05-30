@@ -1,0 +1,27 @@
+[Unit]
+Description=SDLC Pipeline Dashboard
+After=network.target
+
+[Service]
+Type=simple
+# Use as a template unit: pipeline-dashboard@username.service
+# Or replace %I with a concrete user such as pipeline
+User=%I
+Group=%I
+WorkingDirectory=/opt/pipeline-dashboard
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=ENV=prod
+Environment=HOST=127.0.0.1
+Environment=PORT=8000
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/pipeline-dashboard/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Uvicorn does not support graceful config reload via SIGHUP; restart the service instead
+ExecReload=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pipeline-dashboard
+
+[Install]
+WantedBy=multi-user.target

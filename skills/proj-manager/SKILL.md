@@ -108,12 +108,34 @@ Every choice must be justified by the research — cite readability studies, ind
 
 ---
 
+## Step 2.5 — Security Work Breakdown (MANDATORY — from plan.md security architecture)
+
+The architect hands security work down to you. `plan.md` Section 8 (Security Architecture) — including the Authentication, API Security, Database Security, Secrets Management, Input Validation, the Security Vulnerability Matrix (8.7), and the Security Testing Plan (8.6) — is **work that must appear in the plan**, not background reading. If security only lives in `plan.md` and never becomes a task, it never gets built.
+
+**Do this for every project (not just UI projects):**
+
+1. **Read `plan.md` Section 8 in full.** If no `plan.md` was provided, derive baseline security work from the requirements' NFRs (auth, data sensitivity, compliance).
+2. **Create a dedicated "Security & Hardening" epic** (in addition to feature epics). Every row of the architect's security tables becomes a story or task with concrete acceptance criteria, for example:
+   - "Passwords hashed with bcrypt cost 12 (never MD5/SHA)" → task with AC "verify hash output format + cost factor in a test"
+   - "JWT in httpOnly + Secure + SameSite cookie, 15-min access / 7-day refresh rotation" → story
+   - "Rate limiting: auth 5/min, API 100/min" → task with AC "429 returned when limit exceeded"
+   - "Parameterized queries everywhere; no string-concatenated SQL" → task
+   - "Secrets via env/secrets manager; `.env` gitignored; gitleaks pre-commit hook" → task
+3. **Turn the Security Testing Plan (8.6) into testable tasks** owned jointly with QA: SAST in CI, dependency scanning, secret scanning, DAST, and a pre-launch pen-test checkpoint. Each gets acceptance criteria QA can execute.
+4. **Map every OWASP row from the Vulnerability Matrix (8.7)** rated HIGH/MEDIUM to at least one task, so the implemented mitigation is verifiable.
+5. **Sequence it**: foundational security (auth, secrets, input validation) belongs in early sprints alongside the features it protects — not deferred to the end where it gets cut.
+
+Security acceptance criteria must be **verifiable by a tool** (the code-reviewer and qa-engineer will check them), e.g. "running `bandit -r src/` reports 0 high-severity findings", not "the app is secure".
+
+---
+
 ## Step 3 — Create Epic Hierarchy
 
 - Group related work into epics (5-15 typically)
 - Each epic gets: ID (E-001), title, description, business value statement, success metrics
 - Order by dependency chain and roadmap phase
 - If UI exists: include "Design System Setup" epic (E-001) before any UI implementation epics
+- **Always include a "Security & Hardening" epic** built from Step 2.5 — security work is never optional and never implicit
 
 ---
 
@@ -234,3 +256,4 @@ After writing `project-plan.md`, present:
 - Dependencies form a valid DAG — no circular dependencies
 - Every UI task references specific design system tokens
 - Design system setup is Sprint 1, before any UI implementation
+- A "Security & Hardening" epic exists, with every plan.md Section 8 requirement and every HIGH/MEDIUM OWASP matrix row mapped to a task with tool-verifiable acceptance criteria

@@ -95,7 +95,7 @@ docker run --rm review-test npm test  # verify it works
 
 Review every change across ALL of these dimensions. Don't skip any.
 
-### 2.1 Architectural Compliance
+### 3.1 Architectural Compliance
 
 - Does implementation follow patterns from `plan.md`?
 - Are ADR decisions respected?

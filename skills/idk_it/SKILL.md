@@ -82,27 +82,35 @@ The single entry point for all software development work. You talk to this skill
 
 Before agents start working, this orchestrator ensures they have everything they need:
 
-### Auto-Install Language Runtimes
+### Auto-Install Language Runtimes (OS-Aware)
+
+**FIRST detect the OS and pick the right package manager. Never assume Linux/`apt-get`.**
+
 ```bash
-# Node.js (for web apps, APIs, CLI tools)
-which node || (curl -sL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs)
+# Detect OS and package manager once, up front
+case "$(uname -s)" in
+  Darwin)  PKG="brew";    INSTALL="brew install";        SUDO="" ;;        # macOS
+  Linux)
+    if   command -v apt-get >/dev/null; then PKG="apt";  INSTALL="sudo apt-get install -y"
+    elif command -v dnf     >/dev/null; then PKG="dnf";  INSTALL="sudo dnf install -y"
+    elif command -v pacman  >/dev/null; then PKG="pacman"; INSTALL="sudo pacman -S --noconfirm"
+    fi ;;
+esac
+# On macOS, ensure Homebrew exists first:
+[ "$PKG" = brew ] && ! command -v brew >/dev/null && \
+  echo "Homebrew required. Install: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
 
-# Python (for FastAPI, scripts, data work)
-which python3 || apt-get install -y python3 python3-pip python3-venv
-
-# Go (for high-performance CLI tools)
-which go || (wget https://go.dev/dl/go1.21.linux-amd64.tar.gz && tar -C /usr/local -xzf go*.tar.gz)
-
-# Docker (for containerization, deployment)
-which docker || (curl -fsSL https://get.docker.com | sh && usermod -aG docker $USER)
-
-# Git (for version control)
-which git || apt-get install -y git
-
-# PostgreSQL/MySQL client (for database testing)
-which psql || apt-get install -y postgresql-client
-which mysql || apt-get install -y mysql-client
+# Then install only what's missing, using $INSTALL:
+which node    || $INSTALL node          # or nodejs on apt/dnf
+which python3 || $INSTALL python3       # apt/dnf add python3-pip python3-venv
+which go      || $INSTALL go            # 'golang' on apt/dnf
+which git     || $INSTALL git
+which docker  || $INSTALL docker        # macOS: 'brew install --cask docker' (Docker Desktop)
+which psql    || $INSTALL postgresql    # 'postgresql-client' on apt
+which mysql   || $INSTALL mysql-client  # 'mysql' on brew
 ```
+
+The package name often differs per OS (e.g. `go` on brew vs `golang` on apt, `docker` cask on macOS). Resolve the correct name for the detected `$PKG` rather than copying these verbatim.
 
 ### Auto-Install Testing & QA Tools
 ```bash
@@ -210,6 +218,35 @@ If documents exist, don't redo completed phases. Ask: "I see [X, Y, Z] already d
 
 ---
 
+## Step 0.5 — Choose a Build Profile (ask up front for `new` / `add` / `modify`)
+
+Before confirming the plan, ask the user how thorough the build should be. Offer the four presets first, then let them adjust individual items. This controls which OPTIONAL phases and tests run — it's the main speed-vs-rigor dial.
+
+Present this:
+
+> "How thorough should this build be? Pick one, and I'll adjust anything you want:
+>
+> | Profile | Best for | Runs | Skips |
+> |---------|----------|------|-------|
+> | **MVP** (fastest) | demos, throwaway prototypes | requirements, architecture, dev, code review, smoke QA, security scan | full e2e, load test, DAST, accessibility, devops, docs |
+> | **Small project** | internal tools, side projects | + full e2e tests, docs | load test, DAST, accessibility, devops |
+> | **Standard** (default) | real products | + accessibility, devops, docs | load test, DAST |
+> | **Production** (most thorough) | launches, paid/regulated | everything incl. load test + DAST | nothing |
+>
+> Want one of these as-is, or toggle anything (e.g. 'Standard but add load testing', 'MVP but keep docs')?"
+
+Record the resulting profile (which of these run): `code_review`, `qa`, `e2e_tests`, `load_test`, `dast`, `security_scan`, `accessibility`, `devops`, `docs`. Default to **Standard** if the user doesn't care.
+
+**⛔ The profile NEVER skips these — they are mandatory regardless of profile:**
+- Requirements interview + The Grill + requirements checkpoint (Step 3.5 / 6.5 of req-engineer)
+- Architecture (sw-architect), Planning (proj-manager), Development (sw-developer), and the integration pass after parallel dev
+
+The profile only governs the OPTIONAL phases (code review, QA, devops, docs) and the QA sub-tests (e2e, load, DAST, security scan, accessibility). When a phase is disabled, skip spawning that agent and say so in the status line. When a QA sub-test is disabled, tell the qa-engineer agent to skip it in its task prompt.
+
+For `fix` / `review` / `test` / `deploy` / `docs` commands, skip this step — the user already chose the specific phase.
+
+---
+
 ## Step 1 — Confirm the Plan
 
 Before starting, briefly tell the user what will happen:
@@ -264,42 +301,56 @@ Spawn `proj-manager` agent with:
 
 CHECKPOINT: "Project broken into X epics, Y stories, Z tasks. Estimated: X sprints. Review project-plan.md."
 
-**Phase 4: Development — spawn agent**
+**Phase 4: Development — spawn agents (PARALLEL where the DAG allows)**
 
-Spawn `sw-developer` agent with:
-- Input: project-plan.md + plan.md + requirements.md paths
-- Task: implement all tasks in dependency order, scaffolding first
+Development is usually the longest phase — parallelize it. Use the `sw-developer` agentType (tuned model + scoped tools).
 
-After each epic, provide status: "Epic E-XXX complete. X tasks done, Y remaining."
+1. **Read the dependency graph / critical path** in project-plan.md. Identify which epics (or stories) are INDEPENDENT — nothing unfinished blocks them.
+2. **Build shared foundation first** — one sw-developer agent does scaffolding + shared layers (config, models, base utils, auth) that everything depends on. Wait for it.
+3. **Fan out**: spawn ONE `sw-developer` agent PER independent epic, concurrently (multiple Agent calls in a SINGLE message). Give each agent ONLY its epic's tasks plus the shared context, and tell it to stay strictly within that scope so parallel agents don't edit the same files.
+4. **Next wave**: as each epic finishes and unblocks others, spawn the next batch of now-independent epics.
+5. **Sequential fallback**: if the epics are tightly coupled (everything depends on everything), build in dependency order with a single developer — parallelism only helps when work is genuinely independent. When unsure whether two epics touch the same files, run them sequentially.
+6. **⛔ Integration pass (MANDATORY when you parallelized — this is the quality guard):** Parallel agents build their epics in isolation, so the pieces may not wire together. After the parallel waves finish, spawn ONE `sw-developer` agent to: wire the epics together (shared routes/types/config), resolve any merge/interface mismatches, run the FULL test suite across all epics at once, and run the linter/build on the whole codebase. It must report green before you proceed. Parallelism speeds up the work; this step guarantees it didn't fragment quality.
 
-**Phase 5: Code Review — spawn agent**
+After each epic, provide status: "Epic E-XXX complete. X tasks done, Y remaining." After integration: "All epics integrated, full suite green — ready for review."
 
-Spawn `code-reviewer` agent with:
-- Input: codebase + plan.md + project-plan.md
-- Task: full review, write review-report.md
+**Phase 5: Code Review — spawn agents (PARALLEL by module for large codebases)**
+
+> Skip this entire phase if the build profile disables `code_review` (e.g. a quick MVP). Otherwise:
+
+For a large codebase, split the review across modules/layers and spawn multiple `code-reviewer` agents concurrently (one Agent call per slice, in a single message) — e.g. auth, API layer, data/DB, frontend. For a small codebase, one reviewer is enough.
+
+- Input per agent: its assigned files + plan.md + project-plan.md
+- Each agent runs tests/linters/SAST on its slice and returns findings by severity
+- **Merge** all agents' findings into a single `review-report.md` with one overall verdict (CHANGES REQUIRED if ANY slice has a BLOCKER/MAJOR)
 
 If CHANGES REQUIRED:
-1. Spawn sw-developer: fix issues from review-report.md
-2. Spawn code-reviewer: re-review changed files
+1. Spawn sw-developer in **Fix mode**: fix issues from review-report.md (Step 2F)
+2. Re-review ONLY changed + affected files — one agent is usually enough here
 3. Repeat until APPROVED
 
-**Phase 6: QA Testing — spawn agent**
+**Phase 6: QA Testing — spawn agents (PARALLEL by playbook)**
 
-Spawn `qa-engineer` agent with:
-- Input: codebase + project-plan.md + requirements.md
-- Task: all 6 testing levels, write bug-report.md
+> Skip this entire phase if the build profile disables `qa`. Otherwise, tell each qa-engineer agent which sub-tests to run or skip per the profile (`e2e_tests`, `load_test`, `dast`, `security_scan`, `accessibility`) — e.g. an MVP runs a smoke pass with no load test or DAST.
+
+Split QA across the independent playbooks for the detected project type and spawn `qa-engineer` agents concurrently (one Agent call per playbook, in a single message) — e.g. one runs the UI/Playwright suite, one hits the API, one verifies the database, one runs unit/integration + load tests. A single agent is fine for small projects.
+
+- Each agent owns ONE playbook and reports bugs with tool evidence
+- **Merge** results into `bug-report.md`; the overall verdict is REJECTED if ANY agent finds a CRITICAL/HIGH bug
 
 If bugs found:
-1. Spawn sw-developer: fix bugs from bug-report.md
+1. Spawn sw-developer in **Fix mode**: fix bugs from bug-report.md (Step 2F)
 2. Spawn code-reviewer: review fixes
-3. Spawn qa-engineer: retest + regression
+3. Spawn qa-engineer: retest + regression — re-run the SAME playbook/tool that found each bug
 4. Repeat until APPROVED
 
 MANDATORY CHECKPOINT: "QA complete. Verdict: [APPROVED/X bugs remaining]. Ready for deployment?"
 
 **Phase 7 & 8: DevOps + Docs — spawn in PARALLEL**
 
-Spawn both simultaneously (they're independent):
+> Honor the build profile: include `devops-engineer` only if `devops` is enabled, and `tech-writer` only if `docs` is enabled. Spawn whichever remain concurrently. If both are disabled (e.g. MVP), skip straight to the final summary.
+
+Spawn the enabled ones simultaneously (they're independent):
 - `devops-engineer`: CI/CD, Docker, monitoring -> DEPLOYMENT.md
 - `tech-writer`: full docs suite -> README.md + docs/
 
@@ -376,10 +427,12 @@ Spawn tech-writer agent. Done.
 
 | Rule | Details |
 |------|---------|
-| **Always pass full context** | Every agent gets paths to ALL relevant docs + working directory |
-| **One at a time** (default) | Sequential — wait for each to finish |
-| **Parallel when independent** | DevOps + tech-writer at the end only |
-| **Read output before next** | Read output file for checkpoint info and next agent context |
+| **Spawn by agentType** | Use the tuned subagent types — `sw-architect`, `proj-manager`, `sw-developer`, `code-reviewer`, `qa-engineer`, `devops-engineer`, `tech-writer`. Each runs on its assigned model (Opus for architect/reviewer, Sonnet for PM/dev/QA, Haiku for devops/docs) with role-scoped tools. `req-engineer` is NOT an agent — it runs in the main conversation. |
+| **Always pass full context** | Every agent gets paths to ALL relevant docs + working directory + its assigned scope |
+| **Parallelize independent work** | Fan out concurrently (multiple Agent calls in ONE message) when work shares no state: independent epics in development, modules in review, playbooks in QA, and DevOps + tech-writer at the end. This is the main speed lever — use it whenever the dependency DAG allows. |
+| **Sequential only on real dependencies** | When one unit's output feeds the next, or two units edit the same files, run them in order. When unsure if two units conflict, prefer sequential. |
+| **Build foundation before fan-out** | Shared scaffolding/layers are built by one agent first; parallelize only what's genuinely unblocked. |
+| **Read output before next** | Read/merge agent output files for checkpoint info and next-phase context |
 | **Retry once on failure** | If fails again, escalate with clear error and recovery steps |
 | **Pass user feedback** | Re-spawn ONLY the rejected agent with feedback appended |
 

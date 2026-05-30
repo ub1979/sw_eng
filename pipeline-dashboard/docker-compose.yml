@@ -1,0 +1,31 @@
+services:
+  pipeline-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pipeline-dashboard
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./projects:/app/projects
+      - ./logs:/app/logs
+      - ./guardrails.json:/app/guardrails.json:ro
+    environment:
+      - ENV=prod
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATABASE_URL=sqlite+aiosqlite:///data/pipeline.db
+      - PIPELINE_PROJECTS_DIR=/app/projects
+      - PIPELINE_DATA_DIR=/app/data
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    restart: unless-stopped
+    # Linux users: host.docker.internal requires Docker 20.10+ with host-gateway support
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

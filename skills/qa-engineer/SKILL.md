@@ -583,8 +583,44 @@ After every operation that should change data, query the database directly:
 - Boundary values for every numeric input
 - File upload edge cases if applicable (empty file, huge file, wrong type)
 
-**Non-Functional Testing (When Tools Support It)**
-- Performance: response times, page load times, slow queries
+**Load & Performance Testing (When the App Has Performance NFRs or an API)**
+
+Don't eyeball performance — generate real load and measure. Pull the targets from `requirements.md`/`plan.md` NFRs (e.g. "p95 < 200ms", "1000 concurrent users", rate limits). If no targets exist, log it as a requirements gap and test against reasonable defaults.
+
+```bash
+# k6 (preferred for APIs) — install if missing
+brew install k6 2>/dev/null || (which k6 || echo "install k6: https://k6.io/docs/get-started/installation/")
+
+# Minimal k6 load test: ramp to N virtual users, assert p95 latency + error rate
+cat > load.js <<'EOF'
+import http from 'k6/http';
+import { check } from 'k6';
+export const options = {
+  stages: [{ duration: '30s', target: 50 }, { duration: '1m', target: 50 }, { duration: '30s', target: 0 }],
+  thresholds: { http_req_duration: ['p(95)<200'], http_req_failed: ['rate<0.01'] },
+};
+export default function () {
+  const res = http.get('http://localhost:3000/api/v1/items');
+  check(res, { 'status 200': (r) => r.status === 200 });
+}
+EOF
+k6 run load.js   # FAILS the thresholds if p95 > 200ms or error rate > 1%
+
+# Python alternative: locust  (pip install locust) — when k6 isn't available
+```
+
+What to measure and record as evidence:
+- **Latency under load** — p50/p95/p99 response times vs. the NFR target, at expected and 2x expected concurrency
+- **Throughput** — requests/sec the app sustains before latency degrades
+- **Error rate under load** — does it start returning 5xx or timing out as load climbs?
+- **Breaking point** — ramp until it falls over; note where (informs the scaling story for devops)
+- **Rate limiting holds** — hammer auth/API endpoints past the documented limit (e.g. >5/min on login) and confirm `429` is returned, not a crash or a bypass (cross-checks the architect's security rate-limit requirement)
+- **Resource behavior** — watch for memory growth that doesn't recover (leak), unclosed DB connections, connection-pool exhaustion
+- **Slow queries** — under load, capture the slowest DB queries (enable slow-query log or use the DB MCP `explain`)
+
+Any NFR target that fails under load is a bug with severity matched to the gap (CRITICAL if it falls over, HIGH if it misses the SLA). For UI/frontend, also capture page-load metrics (Playwright tracing, or Lighthouse if available) for key pages.
+
+**Other Non-Functional Testing (When Tools Support It)**
 - Error recovery: kill and restart, corrupt inputs
 - Logging: errors logged with context, sensitive data NOT logged
 

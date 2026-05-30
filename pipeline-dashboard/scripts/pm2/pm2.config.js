@@ -1,0 +1,36 @@
+module.exports = {
+  apps: [
+    {
+      name: 'pipeline-dashboard',
+      script: 'python',
+      args: '-m uvicorn app.main:app --host 127.0.0.1 --port 8000',
+      cwd: '/opt/pipeline-dashboard',
+      interpreter: '/opt/pipeline-dashboard/.venv/bin/python',
+      env: {
+        ENV: 'dev',
+        HOST: '127.0.0.1',
+        PORT: '8000',
+        PYTHONUNBUFFERED: '1',
+      },
+      env_production: {
+        ENV: 'prod',
+        HOST: '127.0.0.1',
+        PORT: '8000',
+        PYTHONUNBUFFERED: '1',
+      },
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: '10s',
+      watch: false,
+      log_file: '/opt/pipeline-dashboard/logs/pm2-combined.log',
+      out_file: '/opt/pipeline-dashboard/logs/pm2-out.log',
+      error_file: '/opt/pipeline-dashboard/logs/pm2-error.log',
+      merge_logs: true,
+      time: true,
+      kill_timeout: 5000,
+    },
+  ],
+};

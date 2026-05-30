@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data and generated artifacts (mounted as volumes)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups/
+projects/*/
+!projects/.gitkeep
+logs/
+
+# Test artifacts
+.pytest_cache/
+tests/
+security-reports/
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in image)
+*.md
+docs/
+
+# Scripts (not needed in image)
+scripts/
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore

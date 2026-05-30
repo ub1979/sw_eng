@@ -29,8 +29,9 @@ A senior software developer that reads the full project plan (`project-plan.md`)
 1. **Full pipeline** — user provides `project-plan.md` (and optionally `plan.md` + `requirements.md`). Read ALL documents before writing any code.
 2. **Single task** — user describes one task or pastes a user story directly. Ask one batch of context questions (tech stack, project structure, conventions) then proceed.
 3. **Existing codebase + task** — user points to a code directory and a task. Read the codebase first to match existing patterns, then implement consistently.
+4. **Fix mode** — the orchestrator (or user) provides a `review-report.md` (from code-reviewer) and/or a `bug-report.md` (from qa-engineer) and asks to fix the findings. Do NOT implement new features — address the listed findings only. Follow **Step 2F** below instead of Step 2.
 
-Accept inline args: `--project-plan`, `--plan`, `--requirements`, `--task`, `--path`, `--lang`, `--framework`
+Accept inline args: `--project-plan`, `--plan`, `--requirements`, `--task`, `--path`, `--lang`, `--framework`, `--review-report`, `--bug-report`
 
 ---
 
@@ -56,8 +57,9 @@ Accept inline args: `--project-plan`, `--plan`, `--requirements`, `--task`, `--p
    - Package manager config
    - Linter and formatter
    - Test framework
-   - `.gitignore`
+   - `git init` (if not already a repo) and a `.gitignore` BEFORE the first commit — so secrets and artifacts are never tracked
    - `.env.example` with placeholders
+   - An initial `chore: scaffold project` commit once the skeleton is in place
 
 ---
 
@@ -105,6 +107,58 @@ Write tests IMMEDIATELY after implementation:
 - Map each acceptance criterion to where it's satisfied
 - State which task is next based on dependencies
 - Ask: "Ready for the next task?"
+
+### 2f. Commit the Task
+
+Once tests pass and acceptance criteria are met, commit the work — one logical commit per task so history maps to the plan and any task can be reverted cleanly.
+
+- Commit only after verification passes — never commit a red build.
+- Use a Conventional Commits message referencing the task ID: `feat(auth): add login endpoint (S-012)`, `fix(orders): handle empty cart (BUG-007)`, `test`, `refactor`, `docs`, `chore`.
+- Stage intentionally — never `git add .` blindly. Confirm no secrets, `.env`, build artifacts, or large fixtures are staged (these belong in `.gitignore`).
+- Keep the subject under ~72 chars; use the body to explain WHY when non-obvious.
+- Do NOT add co-author/trailer lines or attribute the commit to a tool unless the project already does so.
+
+---
+
+## Step 2F — Fix Mode (Addressing review-report.md / bug-report.md)
+
+Use this instead of Step 2 when invoked in **Fix mode**. The fix loop is only as good as the discipline here — fix every finding, fix it correctly, and prove it.
+
+### 2F-a. Parse the report into a worklist
+
+- Read `review-report.md` and/or `bug-report.md` in full.
+- Build a checklist keyed by the report's own IDs — `BLOCKER-001`, `MAJOR-003`, `BUG-007`, etc. Capture for each: file/line, the problem, the required fix (the reviewer often supplies a corrected snippet), and the severity.
+- **Fix order is by severity**: all BLOCKER/CRITICAL first, then MAJOR/HIGH, then MEDIUM, then MINOR/LOW. Never start a lower-severity item while a higher one is open.
+- If a finding is unclear or you believe it is wrong, do NOT silently skip it — note your disagreement with reasoning (the orchestrator will route it back), then continue with the rest.
+
+### 2F-b. Fix each finding
+
+- Apply the smallest correct change that resolves the root cause — not a patch over the symptom.
+- When the report includes a "Required fix" snippet, implement that intent (adapt to the real surrounding code; don't blind-paste).
+- If a fix touches shared code, check every caller for regressions (see Cross-Task Consistency).
+- Security findings (any item from the code-reviewer security checklist or a CRITICAL security bug) get fixed exactly to the architect's mandate — bcrypt/Argon2id, parameterized queries, httpOnly cookies, etc. No partial fixes.
+
+### 2F-c. Add a regression test for every bug
+
+- For each `bug-report.md` entry, write a test that **fails against the old code and passes after the fix** — this is what stops the bug from coming back.
+- For review findings about missing/weak tests, add the missing tests.
+
+### 2F-d. Prove it — reproduce with the SAME tool QA used
+
+- Re-run the exact reproduction from the report: if QA found it with curl, re-run that curl; if Playwright, re-run that browser step; if a DB query, re-run it.
+- Run the FULL existing test suite to catch regressions, plus the linter.
+- A finding is only "fixed" when you have tool output showing the new behavior.
+
+### 2F-e. Report fixes mapped to IDs
+
+Produce a fix summary the reviewer/QA can verify directly:
+
+| Finding ID | Severity | File | What was wrong | Fix applied | Proof (tool + result) |
+|-----------|----------|------|----------------|-------------|------------------------|
+| BLOCKER-001 | security | auth/login.py:42 | SHA256 password hash | Switched to bcrypt cost 12 | `pytest tests/test_auth.py` 14 passed |
+| BUG-007 | HIGH | api/orders.py:88 | 500 on empty cart | Guard + 400 response | `curl ... ` → 400 with message |
+
+Then hand back: "Fixes complete. Re-run `code-reviewer` / `qa-engineer` to verify." Do NOT mark a finding resolved that you couldn't prove with a tool — list it as still-open with the blocker.
 
 ---
 
@@ -166,6 +220,19 @@ For non-class languages (Go, Rust, C): apply principles through structs, interfa
 - Constants: `UPPER_SNAKE_CASE`
 - Files: match the primary class/module they contain
 - Test files: `test_<module>.py`, `<module>.test.ts`, `<module>_test.go`
+
+---
+
+## Version Control
+
+- **Commit per task** — each completed task/story is one logical commit (see Step 2f). History should read like the project plan.
+- **Branch strategy** — work on a feature branch (`feat/S-012-login`, `fix/bug-007-empty-cart`), not directly on `main`. If the project already has a branching convention, match it.
+- **Conventional Commits** — `type(scope): summary (TASK-ID)`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`.
+- **Never commit**: secrets, `.env`, credentials, `node_modules`/`venv`/build output, large binaries. Verify `.gitignore` covers them before the first commit.
+- **Green commits only** — tests and linter pass before you commit. No "WIP" commits with a broken build on a shared branch.
+- **Fix mode** (Step 2F) — commit fixes referencing the finding ID: `fix(auth): use bcrypt for password hashing (BLOCKER-001)`.
+- **Don't push or open PRs unless asked** — the orchestrator or user decides when to push. Branch protection / CI / PR review is set up by the `devops-engineer` skill.
+- **Don't add tool-attribution trailers** to commits unless the repo already uses them.
 
 ---
 
