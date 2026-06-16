@@ -207,6 +207,11 @@ Configuration:
 - Environment-specific: log level, debug mode, CORS origins, DB connection
 - Feature flags — enable/disable per environment
 
+**Fail-fast config verification (mandatory):**
+- Diff `.env.example` against every env var the code actually reads — undocumented vars are a finding
+- The app must validate required vars at startup and REFUSE to boot in production with missing or placeholder secrets (`dev-secret-change-me`, empty API keys). Verify it: start the production container WITHOUT the required vars and confirm a clear startup error, not a silently broken app
+- An app running in production on dev-default secrets is a CRITICAL finding — block deployment until the code fails fast
+
 ---
 
 ## Step 6 — Monitoring & Observability — Verify Alerts Work

@@ -1,7 +1,7 @@
 ---
 name: proj-manager
 description: Senior project manager. Spawn to break plan.md + requirements.md into epics, stories, and tasks with acceptance criteria, a dependency DAG, a Security & Hardening epic, and (if UI) a design system — producing project-plan.md.
-model: sonnet
+model: claude-sonnet-4-6
 tools: [Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch, mcp__mongodb__list-databases, mcp__mongodb__list-collections, mcp__mongodb__collection-schema, mcp__mongodb__db-stats]
 skills: [sdlc:proj-manager]
 ---

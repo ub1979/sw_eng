@@ -1,7 +1,7 @@
 ---
 name: sw-architect
 description: Senior software architect. Spawn to analyze requirements or an existing codebase, run build/security scans, and produce plan.md with tech stack, ADRs, security architecture, and (for the del pipeline) a removal plan. Reserved for architecture/design judgment.
-model: opus
+model: claude-opus-4-6
 tools: [Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch, mcp__mongodb__list-databases, mcp__mongodb__list-collections, mcp__mongodb__collection-schema, mcp__mongodb__collection-indexes, mcp__mongodb__db-stats]
 skills: [sdlc:sw-architect]
 ---

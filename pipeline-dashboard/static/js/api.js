@@ -10,6 +10,7 @@ async function apiGet(path) {
 }
 
 async function apiPost(path, body) {
+  console.log("POST", path, JSON.stringify(body));
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -17,7 +18,13 @@ async function apiPost(path, body) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || res.statusText);
+    const detail = err.detail;
+    const msg = typeof detail === "string"
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((e) => e.msg || JSON.stringify(e)).join("; ")
+        : res.statusText;
+    throw new Error(msg);
   }
   return res.json();
 }

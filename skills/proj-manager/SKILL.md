@@ -257,3 +257,4 @@ After writing `project-plan.md`, present:
 - Every UI task references specific design system tokens
 - Design system setup is Sprint 1, before any UI implementation
 - A "Security & Hardening" epic exists, with every plan.md Section 8 requirement and every HIGH/MEDIUM OWASP matrix row mapped to a task with tool-verifiable acceptance criteria
+- The project-wide Definition of Done (Section 8) includes production readiness: the feature works in the PRODUCTION build with production-like config against real services (real DB/cache, no mocks), required env vars are documented in `.env.example` and fail fast when missing, and QA verified it the way a real user will use it — "passes mocked unit tests" alone never satisfies Done

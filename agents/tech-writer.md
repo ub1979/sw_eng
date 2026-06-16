@@ -1,7 +1,7 @@
 ---
 name: tech-writer
 description: Senior technical writer. Spawn to generate the docs suite (README, API docs, developer/deployment/user guides, changelog) from the finished codebase, testing every example against running endpoints.
-model: haiku
+model: claude-haiku-4-5
 tools: [Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch, mcp__mongodb__list-collections, mcp__mongodb__collection-schema, mcp__mongodb__list-databases]
 skills: [sdlc:tech-writer]
 ---

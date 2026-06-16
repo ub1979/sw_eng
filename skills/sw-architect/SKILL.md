@@ -329,6 +329,7 @@ Every plan.md must include a comprehensive security section. Security is not opt
 |------|---------|
 | No secrets in code | Zero secrets in source code, config files, or Dockerfiles committed to git |
 | `.env` files | Use `.env.example` with placeholder values; real `.env` in `.gitignore` |
+| Fail-fast startup validation | Define the full env var contract (name, required/optional, secret y/n). The app MUST validate required vars at startup and refuse to boot in production with missing or dev-default values (`?? "dev-secret"` fallbacks are forbidden for secrets in production). This contract feeds proj-manager tasks and QA's production-readiness tests. |
 | Production secrets | Use a secrets manager (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) |
 | API keys | Rotate every 90 days, scope to minimum required permissions |
 | Encryption keys | Separate from data, stored in KMS, never in application code |

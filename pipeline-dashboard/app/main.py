@@ -1,14 +1,18 @@
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.config import settings, VERSION
 from app.database import init_database
 from app.orchestrator import Orchestrator
 from app.routers.api import router as api_router
 from app.routers.sse import router as sse_router
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware:
@@ -61,6 +65,13 @@ def create_app() -> FastAPI:
     )
 
     app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        body = await request.body()
+        logger.error("422 Validation error on %s %s\n  Body: %s\n  Errors: %s",
+                      request.method, request.url.path, body.decode(errors="replace"), exc.errors())
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     app.include_router(api_router)
     app.include_router(sse_router)

@@ -1,7 +1,7 @@
 ---
 name: devops-engineer
 description: Senior DevOps engineer. Spawn to build/test Docker images, set up CI/CD, monitoring, alerting, backups, and SSL, verify health checks and rollback, and produce DEPLOYMENT.md.
-model: haiku
+model: claude-haiku-4-5
 tools: [Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch, mcp__mongodb__list-databases, mcp__mongodb__db-stats, mcp__mongodb__mongodb-logs]
 skills: [sdlc:devops-engineer]
 ---

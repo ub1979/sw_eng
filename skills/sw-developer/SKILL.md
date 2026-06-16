@@ -96,6 +96,8 @@ Write tests IMMEDIATELY after implementation:
 
 - Run tests and confirm they pass
 - Run linter if configured
+- **Run the production build, not just the dev server** — `npm run build` (or equivalent) must succeed, and for the final task of an epic, start the compiled artifact and smoke the feature against it. Code that only works under `tsx watch`/`next dev` is not done.
+- **Config hygiene**: if you read any new env var, add it to `.env.example` with a description. Secrets must NEVER have working dev-default fallbacks that survive into production (`?? "dev-secret-change-me"` must cause a hard startup failure when `NODE_ENV=production`). Validate required vars at startup — fail fast with a clear message, don't boot silently broken.
 - If you changed a web UI and browser automation or MCP tooling is available, run a quick browser smoke path before handoff; otherwise flag browser verification as pending for QA
 - Trace through code against acceptance criteria — list each and mark as met
 
@@ -280,10 +282,12 @@ project-root/
   - Error cases — invalid input, missing fields, unauthorized
   - State transitions — verify before and after
 - **Mocking:**
-  - Mock external dependencies (DB, HTTP, file I/O, time)
+  - Mock external dependencies (DB, HTTP, file I/O, time) for unit tests
   - Never mock the unit under test
   - Use dependency injection
   - Prefer fakes over mocks when mock setup exceeds implementation complexity
+  - **Never ONLY mock external tool integrations.** If code builds a CLI command (subprocess, exec), makes an HTTP request, generates a query, or writes a config file, there must be at least one test that runs the real thing — verifying the command flags exist, the request format is valid, the query parses, or the config is accepted. Mocked-only tests prove internal logic but not that the real integration works.
+  - **Integration tests run against REAL local services.** If the project uses a database, cache, or queue that is available locally (docker-compose, installed service, testcontainers), write integration tests that hit the real service — not a mock of it. Mock only what genuinely cannot run locally (paid third-party SaaS), and even then add one credential-gated smoke test that exercises the real call when keys are present. Code whose only proof is mocks is half-cooked — QA will reject it.
 - **Test data:**
   - Use factories/builders for test objects
   - Keep large datasets in fixtures files
@@ -300,6 +304,16 @@ project-root/
 - After each task, run ALL existing tests to catch regressions
 - If any existing test breaks, fix it before proceeding
 - Update shared types/interfaces if the data model changed
+
+---
+
+## Go Beyond the Ticket
+
+A senior developer doesn't step over broken glass. When you encounter problems OUTSIDE your task's scope while implementing:
+
+- **Small and safe** (broken import, failing lint, stale `dist/` artifacts, missing `.env.example` entry, dead code, typo'd doc) → fix it now, note it in your task report
+- **Real but bigger** (a bug in adjacent code, a security smell, a flaky test, a design problem) → do NOT silently ignore it, and do NOT silently rewrite half the codebase either. Report it explicitly in your completion summary as a flagged finding so the orchestrator/reviewer can route it
+- **Never** leave something you know is broken unmentioned. "Not my task" is not a reason to ship known breakage silently — that's the difference between someone who closes tickets and someone who owns the codebase.
 
 ---
 

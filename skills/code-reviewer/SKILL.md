@@ -50,7 +50,11 @@ Accept inline args: `--plan`, `--project-plan`, `--path`, `--task`, `--files`, `
    - Understand existing patterns, naming conventions, project structure
    - Identify files changed for this task
    - Read related files that interact with the changed code
-4. **Check review tooling/access when needed:**
+4. **Read previous reports — open findings carry forward (MANDATORY):**
+   - If a previous `review-report.md` or `bug-report.md` exists, read it and build a carry-over list of every finding MAJOR/HIGH or above
+   - For each one, verify with a tool whether it was actually fixed. Fixed → record as resolved with evidence. Not fixed → it REAPPEARS in the new report at the same or higher severity, marked "CARRIED OVER from [date] — still open"
+   - Findings never silently disappear between reviews. A MAJOR that was "recommended" two reviews ago and still isn't fixed is evidence of a broken loop — escalate it
+5. **Check review tooling/access when needed:**
    - If the review depends on GitHub checks, CI logs, security scanners, or browser confirmation for UI behavior, use the relevant MCP tools when available
    - If a required MCP server or external tool is missing and it materially limits the review, ask the user to install/enable it or mark the review scope as limited
 
@@ -83,6 +87,11 @@ python -m bandit -r src/
 # Build the Docker image if changed
 docker build -t review-test .
 docker run --rm review-test npm test  # verify it works
+
+# Boot the real thing — review is not only static analysis
+npm run build                      # the PRODUCTION build must succeed
+npm start &                        # start the compiled artifact
+sleep 3 && curl -s http://localhost:3000/health  # verify it actually runs
 ```
 
 **Why**: If tests fail or linters find issues BEFORE you start reviewing, stop and report those first. The developer needs to fix tool failures before moving to design review.
@@ -151,6 +160,7 @@ Any security FAIL is automatic HIGH severity.
 - Tests independent? (no shared state, no order dependency)
 - Test names read like specifications?
 - Mocks appropriate? (mocking externals, not unit under test)
+- **Over-mocking?** If code calls external tools or services (subprocess, HTTP, CLI), are there ONLY mocked tests? Mocked-only external integrations are a gap — the mock proves internal logic but not that the real command/request/query is valid. Flag if there's no integration test that runs the real tool at least once.
 - Coverage adequate? (>80% on new code)
 - Any non-discriminating tests? (always pass regardless of implementation)
 
@@ -286,6 +296,8 @@ Write to `<working_directory>/review-report.md`:
    - Repeat until APPROVED
 4. Once APPROVED: "Code review passed. Ready for QA — run the `qa-engineer` skill."
 
+**⛔ APPROVED means ZERO open BLOCKER or MAJOR findings.** "APPROVED with recommendations" on a MAJOR is FORBIDDEN — that's how findings die in a drawer and resurface in production. If a MAJOR stands, the verdict is CHANGES REQUIRED, full stop. The only way a MAJOR doesn't block approval is if the user explicitly accepts it in writing, and that acceptance is recorded in the report next to the finding. MINOR and SUGGESTION items may ride along with an approval — MAJORs may not.
+
 ---
 
 ## Review Principles
@@ -297,4 +309,6 @@ Write to `<working_directory>/review-report.md`:
 - **Security is always a blocker** — any security gap from the plan is automatic BLOCKER
 - **Praise what's good** — good patterns should be reinforced
 - **Review tests as carefully as code** — bad tests are worse than no tests (false confidence)
+- **Run it before you judge it** — a review that never built and started the production artifact is a half-review. Static reading misses what only happens at runtime.
+- **Open findings never expire** — every unresolved MAJOR+ from previous reports carries forward into this one until it's verified fixed or the user explicitly accepts it. You are the institutional memory of the pipeline.
 - **Context matters** — a prototype has different standards than a banking app. Review proportionally.

@@ -50,6 +50,15 @@ Before telling the user a pipeline phase is done, verify:
 
 If any answer is wrong → STOP, spawn the agent, do not proceed.
 
+### Rule 5: FINDINGS NEVER DIE IN A DRAWER — EVERY MAJOR+ FINDING IS CLOSED OR ESCALATED
+
+Every finding of severity MAJOR/HIGH or above, from ANY phase (`review-report.md`, `bug-report.md`), must end in exactly one of two states before the pipeline is declared complete:
+
+1. **Fixed and re-verified** — by the agent type that found it, with the same tool and reproduction that found it, OR
+2. **Explicitly accepted by the user** — you presented the finding and its risk, the user said "ship it anyway", and that acceptance is recorded in the report next to the finding.
+
+"APPROVED with recommendations" does NOT close a MAJOR finding — treat that verdict as CHANGES REQUIRED and route it back to the fix loop. Before the final summary, re-read the latest `review-report.md` and `bug-report.md` and list every MAJOR+ item: if any is neither verified-fixed nor user-accepted, the pipeline is NOT done. A finding silently surviving across iterations is a pipeline failure — the whole point of the loop is that nothing falls through it.
+
 ### Common Bypass Patterns That Are FORBIDDEN
 
 These are real examples of LLM behavior that violates this skill. If you catch yourself doing ANY of these, you are in violation:
@@ -336,6 +345,7 @@ If CHANGES REQUIRED:
 Split QA across the independent playbooks for the detected project type and spawn `qa-engineer` agents concurrently (one Agent call per playbook, in a single message) — e.g. one runs the UI/Playwright suite, one hits the API, one verifies the database, one runs unit/integration + load tests. A single agent is fine for small projects.
 
 - Each agent owns ONE playbook and reports bugs with tool evidence
+- Tell every qa-engineer agent: verdicts come from the REAL running system — production build, real database/cache, production-like config. Mocked tests are developer evidence, never QA evidence (see the qa-engineer hard rules).
 - **Merge** results into `bug-report.md`; the overall verdict is REJECTED if ANY agent finds a CRITICAL/HIGH bug
 
 If bugs found:
@@ -427,7 +437,7 @@ Spawn tech-writer agent. Done.
 
 | Rule | Details |
 |------|---------|
-| **Spawn by agentType** | Use the tuned subagent types — `sw-architect`, `proj-manager`, `sw-developer`, `code-reviewer`, `qa-engineer`, `devops-engineer`, `tech-writer`. Each runs on its assigned model (Opus for architect/reviewer, Sonnet for PM/dev/QA, Haiku for devops/docs) with role-scoped tools. `req-engineer` is NOT an agent — it runs in the main conversation. |
+| **Spawn by agentType** | Use the tuned subagent types — `sw-architect`, `proj-manager`, `sw-developer`, `code-reviewer`, `qa-engineer`, `devops-engineer`, `tech-writer`. Each agent definition pins its EXACT model ID (`claude-opus-4-6` for architect/reviewer/QA, `claude-sonnet-4-6` for PM/dev, `claude-haiku-4-5` for devops/docs) with role-scoped tools — never override these with aliases like `opus`/`sonnet` when spawning; the agent files are the source of truth for model selection. `req-engineer` is NOT an agent — it runs in the main conversation. |
 | **Always pass full context** | Every agent gets paths to ALL relevant docs + working directory + its assigned scope |
 | **Parallelize independent work** | Fan out concurrently (multiple Agent calls in ONE message) when work shares no state: independent epics in development, modules in review, playbooks in QA, and DevOps + tech-writer at the end. This is the main speed lever — use it whenever the dependency DAG allows. |
 | **Sequential only on real dependencies** | When one unit's output feeds the next, or two units edit the same files, run them in order. When unsure if two units conflict, prefer sequential. |

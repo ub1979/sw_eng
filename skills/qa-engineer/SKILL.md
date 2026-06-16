@@ -30,6 +30,22 @@ You are the last line of defense before code reaches users. Your job is to find 
 
 ---
 
+## ⛔ HARD RULE: QA TESTS THE REAL SYSTEM, IN PRODUCTION CONDITIONS — NEVER MOCKS
+
+> **A mocked test proves the mock works. QA verdicts come ONLY from the real running system, used the way production will use it.**
+
+1. **Mocked tests are developer evidence, not QA evidence.** Running the unit test suite is one input to QA — it is never the verdict. Every PASS you report must come from the real app: real database, real cache, real queue, real browser, real filesystem, real network. If the only proof a feature works is a test with a mocked dependency, that feature is UNTESTED — test it for real, or mark it BLOCKED. Never let "362 unit tests pass" stand in for "the feature works."
+
+2. **Test the production build, not just the dev server.** Real users never run `tsx watch` or `next dev`. Build the production artifact (`npm run build` then run the compiled output, `next build && next start`, `NODE_ENV=production`) and run your key flows against THAT. Dev mode hides real bugs: env vars papered over by dev defaults, dev-only error overlays masking crashes, different caching and CORS behavior, code that only exists after compilation. "Works in dev mode" is not a QA result.
+
+3. **Test with production-like configuration.** Read `.env.example` and the config loader. For every variable that silently falls back to a dev default (empty API key `?? ""`, `dev-jwt-secret-change-me`, localhost URLs), test the production condition: unset it, start in production mode, and verify the app **fails fast with a clear startup error**. An app that boots silently broken — a feature backed by an empty API key that only fails when a real user touches it — is a CRITICAL bug NOW, not "a deployment concern later."
+
+4. **Test with realistic data at realistic volume.** Three hand-typed rows is not a test bed. Seed data shaped like production: realistic field lengths, unicode names, special characters, and hundreds-to-thousands of records for anything with lists, pagination, search, or aggregation. Bugs in pagination, sorting, missing indexes, and N+1 queries only appear at volume — create the volume.
+
+5. **Break the dependencies the way production will.** Stop the database mid-session. Kill Redis. Point the third-party API at a dead port. The app must degrade with clear errors — not hang, not crash-loop, not corrupt data, not leak stack traces. Production WILL do this to the app; QA does it first and records what happened.
+
+---
+
 ## Step 0 — Detect Input Mode
 
 1. **Full pipeline** — user provides `project-plan.md` (and optionally `requirements.md`, `plan.md`). Read all documents to extract every acceptance criterion, user story, and non-functional requirement.
@@ -149,16 +165,18 @@ List all connected MCP servers and their tools. For each server found:
 
 Based on the project type detected in Step 1, determine which tools are REQUIRED vs. NICE-TO-HAVE:
 
-| Project Need | Required Tool | MCP Alternative | Fallback |
+| Project Need | Preferred Tool (MCP) | Fallback Tool | Last Resort |
 |---|---|---|---|
-| Database verification (MongoDB) | mongosh via Bash | mcp__mongodb__find, mcp__mongodb__count, mcp__mongodb__aggregate | BLOCKED — mark in report |
-| Database verification (SQL) | psql/mysql via Bash | Database MCP server if available | BLOCKED — mark in report |
-| Browser UI testing | Playwright | Browser MCP server | BLOCKED — mark in report |
-| API testing | curl/httpx | — | Bash curl (always available) |
-| GitHub integration | gh CLI | GitHub MCP server | Bash gh |
-| File search | grep/glob | — | Bash find (always available) |
-| Email verification | — | Gmail MCP server | BLOCKED — mark in report |
-| Cloud resources | Cloud CLI | Cloud MCP server | BLOCKED — mark in report |
+| Browser UI testing | **Playwright MCP** (`mcp__playwright__*`) — use `ToolSearch` for "playwright" to check | Playwright npm (`npx playwright test`) | **BLOCKED — CRITICAL** — mark in report, do NOT skip |
+| Database verification (MongoDB) | mcp__mongodb__find, mcp__mongodb__count, mcp__mongodb__aggregate | mongosh via Bash | BLOCKED — mark in report |
+| Database verification (SQL) | Database MCP server if available | psql/mysql via Bash | BLOCKED — mark in report |
+| API testing | — | curl/httpx via Bash | Bash curl (always available) |
+| GitHub integration | GitHub MCP server | gh CLI via Bash | Bash gh |
+| File search | — | grep/glob | Bash find (always available) |
+| Email verification | Gmail MCP server | — | BLOCKED — mark in report |
+| Cloud resources | Cloud MCP server | Cloud CLI | BLOCKED — mark in report |
+
+**⛔ For Web Apps: Browser UI testing is REQUIRED, not optional.** If neither Playwright MCP nor Playwright npm is available, the entire Web App playbook is BLOCKED — CRITICAL. Do NOT substitute curl and call it "tested."
 
 ### 3. Install Missing Tools
 
@@ -201,6 +219,106 @@ When both an MCP server and a CLI tool are available for the same purpose, prefe
 
 ---
 
+## ⛔ HARD RULE: WEB APPS MUST BE TESTED IN A REAL BROWSER
+
+> **This rule is NON-NEGOTIABLE. Violation means the QA phase DID NOT HAPPEN for UI testing.**
+
+When the project is classified as a **Web App** (frontend + backend):
+
+1. **You MUST test through a real browser against the frontend dev server URL** (e.g., `http://localhost:5173`), NOT directly against the backend API (e.g., `http://localhost:8000`). The frontend dev server proxies API requests — testing the backend directly skips CORS, proxy config, and frontend fetch logic, which are real failure points that only manifest in a browser.
+
+2. **You MUST start BOTH servers** — the backend AND the frontend dev server — before running any browser tests. Verify both are responding before proceeding.
+
+3. **You MUST open key pages in the browser and interact with them** — click buttons, fill forms, submit data, check for console errors, verify network requests succeed. `curl` against API endpoints is an API test, NOT a browser test. Both are required.
+
+4. **You MUST check the browser's developer console for errors** — any JavaScript error, failed fetch, CORS error, or unhandled promise rejection is a bug.
+
+5. **You MUST test file uploads and form submissions through the browser UI**, not via `curl`. Browser file uploads go through FormData, CORS preflight, and the frontend's fetch/axios client — all of which can fail independently of the backend.
+
+6. **If no browser tool is available** (neither Playwright MCP nor Playwright npm), mark ALL browser UI tests as **BLOCKED — CRITICAL** in the bug report. Do NOT silently fall back to curl-only testing and call it "QA passed." API-only testing covers at most 50% of a web app.
+
+### Browser Testing Tools — Priority Order
+
+Use whichever is available, in this order of preference:
+
+#### Option A: Playwright MCP Server (PREFERRED)
+
+The Playwright MCP server (`@playwright/mcp`) gives you direct browser control via MCP tool calls — no test scripts to write. Look for tools like:
+
+- `mcp__playwright__browser_navigate` — go to a URL
+- `mcp__playwright__browser_click` — click an element
+- `mcp__playwright__browser_type` — type into an input
+- `mcp__playwright__browser_snapshot` — get page accessibility snapshot (like reading the DOM)
+- `mcp__playwright__browser_screenshot` — take a screenshot as evidence
+- `mcp__playwright__browser_console_messages` — read console errors/warnings
+- `mcp__playwright__browser_network_requests` — see all network requests (catches failed fetches, CORS errors)
+
+**How to use it:** In Step 1.5 (Tool Discovery), run `ToolSearch` for `playwright` or `browser` to check if the MCP server is connected. If it is, use these MCP tools directly to browse the app like a human — navigate to pages, click buttons, fill forms, read results. This is the easiest and most reliable method because you interact with the browser the same way you use any other MCP tool.
+
+Example workflow with Playwright MCP:
+```
+1. mcp__playwright__browser_navigate → http://localhost:5173/library
+2. mcp__playwright__browser_snapshot → read the page, find the YouTube URL input
+3. mcp__playwright__browser_type → type a YouTube URL into the input field
+4. mcp__playwright__browser_click → click the Import button
+5. mcp__playwright__browser_snapshot → check if success message appeared
+6. mcp__playwright__browser_console_messages → check for any JS errors or failed fetches
+7. mcp__playwright__browser_screenshot → capture evidence for bug report
+```
+
+If the Playwright MCP server is NOT connected, tell the user:
+> "Playwright MCP server is not connected. Add it to your MCP config for best browser testing:
+> ```json
+> \"playwright\": {
+>   \"type\": \"stdio\",
+>   \"command\": \"npx\",
+>   \"args\": [\"@playwright/mcp@latest\", \"--headless\"]
+> }
+> ```
+> Falling back to Playwright npm package."
+
+#### Option B: Playwright npm Package (FALLBACK)
+
+If the MCP server isn't available, install and use the Playwright npm package to write and run test scripts:
+
+```bash
+npm install -D @playwright/test && npx playwright install chromium
+```
+
+```javascript
+// Example: test a form submission through the browser
+const { test, expect } = require('@playwright/test');
+
+test('import YouTube URL via browser UI', async ({ page }) => {
+  // Navigate to the FRONTEND dev server, not the backend
+  await page.goto('http://localhost:5173/library');
+  
+  // Interact with the UI like a real user
+  await page.fill('[data-testid="youtube-url"]', 'https://youtube.com/watch?v=example');
+  await page.click('[data-testid="import-button"]');
+  
+  // Check for success/failure in the UI
+  await expect(page.locator('.success-message')).toBeVisible({ timeout: 30000 });
+  
+  // Check browser console for errors
+  const errors = [];
+  page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+  expect(errors).toHaveLength(0);
+});
+```
+
+If the app doesn't use data-testid attributes, use visible text, labels, or CSS selectors — but ALWAYS interact through the browser, never bypass it.
+
+### Why This Rule Exists
+
+In a typical web app with a frontend dev server (Vite, Next.js, CRA) proxying to a backend:
+- `curl http://localhost:8000/api/endpoint` → works (no browser, no CORS, no proxy)
+- Browser `fetch('/api/endpoint')` from `localhost:5173` → may fail due to CORS, proxy misconfiguration, wrong BASE_URL, missing headers, or frontend client bugs
+
+These are DIFFERENT code paths. Testing only via curl gives a false sense of security. The QA agent MUST test the path that actual users take: **browser → frontend dev server → proxy → backend**.
+
+---
+
 ## Step 2 — Set Up the Testing Environment
 
 This is where most QA fails — people skip setup and then "test" by reading code. You will actually set up and run things. What you install depends entirely on what you detected in Step 1.
@@ -211,8 +329,13 @@ Install what you need. Don't ask the user — just do it. Only ask if something 
 
 **Web App / Static Website:**
 ```bash
+# Step 1: Check if Playwright MCP server is connected (preferred — no install needed)
+# Run ToolSearch for "playwright" or "browser" to check for mcp__playwright__* tools
+# If connected → use MCP tools directly, skip npm install
+
+# Step 2: If no Playwright MCP, install npm package as fallback
 npm install -D @playwright/test && npx playwright install chromium
-# Playwright is non-negotiable — no browser testing without it
+# Browser testing is non-negotiable — no browser = BLOCKED CRITICAL
 ```
 
 **API Service:**
@@ -271,7 +394,8 @@ This looks different per project type:
 
 | Project Type | How to Start | What Success Looks Like |
 |---|---|---|
-| Web App | `npm run dev` / `python manage.py runserver` / check package.json scripts | Server responds on expected port |
+| Web App (fullstack) | Start BOTH backend (`uvicorn`/`python manage.py runserver`) AND frontend (`npm run dev`/`npx vite`). Test the FRONTEND URL (e.g., 5173), not just the backend (e.g., 8000). Verify the frontend can proxy API requests to the backend. | Both servers respond; `curl http://localhost:<frontend-port>/api/health` returns 200 through the proxy |
+| Web App (SPA only) | `npm run dev` / check package.json scripts | Server responds on expected port |
 | API Service | Start the server, hit health endpoint | GET /health returns 200 |
 | CLI Tool | Run with `--help` or `--version` | Outputs help text, exits 0 |
 | Desktop App | Launch the app binary or `npm start` | Window appears (or process starts) |
@@ -304,11 +428,16 @@ Run the playbook that matches your project type from Step 1. Most projects are a
 
 ### Playbook: Web App / Static Website
 
-**Tools**: Playwright (mandatory), curl/httpx (API), database client (if DB)
+**Tools**: Playwright MCP or Playwright npm (mandatory for browser), curl/httpx (API supplement only), database client (if DB)
+
+**⛔ IMPORTANT: For fullstack web apps (frontend + backend), ALL browser tests MUST navigate to the FRONTEND dev server URL (e.g., `http://localhost:5173`), NEVER directly to the backend (e.g., `http://localhost:8000`). The frontend proxy is part of the system under test. Skipping it means you're not testing what the user actually experiences.**
 
 **3W-1. Browser Testing — Every Page, Every Element**
 
-Use Playwright. No exceptions. A user doesn't read source code — they see pages and click things.
+Use a real browser. No exceptions. A user doesn't read source code — they see pages and click things. Point the browser at the frontend URL — the same URL a real user would open.
+
+- **If Playwright MCP is connected:** use `mcp__playwright__browser_navigate`, `mcp__playwright__browser_click`, `mcp__playwright__browser_type`, `mcp__playwright__browser_snapshot`, and `mcp__playwright__browser_screenshot` to interact with every page. Use `mcp__playwright__browser_console_messages` after each action to catch JS errors, failed fetches, and CORS failures. Take screenshots as evidence for the bug report.
+- **If Playwright MCP is NOT connected:** install Playwright npm and write test scripts (see Step 2 setup).
 
 For every page in the application:
 1. **Load the page** — verify it renders without console errors, broken images, or missing assets
@@ -624,6 +753,28 @@ Any NFR target that fails under load is a bug with severity matched to the gap (
 - Error recovery: kill and restart, corrupt inputs
 - Logging: errors logged with context, sensitive data NOT logged
 
+**Production Readiness Pass (Mandatory Before Sign-Off)**
+
+This is the difference between "passes tests" and "ready for real users." Run it on every project that will be deployed:
+
+1. **Build and run the production artifact** — `npm run build && npm start` (or compiled binary, `next build && next start`, Docker image). Smoke-test every business-critical flow against it. Anything that works in dev but breaks in the production build is a HIGH bug.
+2. **Config audit** — diff `.env.example` against every `process.env`/config read in the code. Undocumented variables, silent dev-default fallbacks for secrets, and empty-string API key defaults are bugs. Start the production build with required vars MISSING and verify it refuses to start with a clear error.
+3. **Cold start / fresh machine test** — simulate a new deploy: fresh clone (or `git clean -xdn` review), install, migrate, seed, start. If the README/setup steps don't get the app running, that's a bug against the docs.
+4. **Restart resilience** — kill the app and restart it: do sessions survive (or fail cleanly)? Are in-flight writes safe? Does it reconnect to DB/cache without manual help?
+5. **Dependency failure drill** — stop the database and cache one at a time while the app runs: verify clear errors, no hangs, no data corruption, recovery on reconnect.
+6. **Concurrency sanity** — two browser sessions logged in as different users acting on the same data: no leakage between users, no last-write-wins data loss without warning.
+
+**Exploratory Testing — Go Beyond the Script (Mandatory)**
+
+The test inventory is the floor, not the ceiling. A real QA engineer spends time off-script doing things no acceptance criterion mentions — that's where the embarrassing bugs live. After the scripted playbooks, run at least one exploratory session per major feature area:
+
+- **Confused first-time user**: click the wrong things, go back mid-flow, double-click submit, refresh during a save, open the same page in two tabs, paste formatted text into plain inputs
+- **Power user**: rapid-fire actions, keyboard-only navigation, bookmarked deep links, browser back/forward through an entire flow, 50 items where the design assumed 5
+- **Hostile user**: tamper with cookies/localStorage, replay requests, edit hidden form fields, manipulate URL params and resource IDs (IDOR probing), submit while logged out
+- **Distracted user**: start a flow, walk away, come back after the session expires, resume; submit a form on a flaky connection (throttle the network)
+
+Anything that surprises you is a finding. "Works but feels broken" gets logged (LOW/MEDIUM), not shrugged off. Exploratory findings carry the same evidence standard as scripted tests.
+
 ---
 
 ## Step 4 — Write bug-report.md
@@ -687,10 +838,11 @@ Re-run the EXACT SAME tools and commands you used to find each bug. Do NOT just 
 3. Run the FULL automated test suite — not just fixed areas
 4. Re-run Playwright UI tests for any bug that involved the UI
 5. Re-query the database (via MCP or direct client) for any bug that involved data mutations
-6. Run a regression sweep: re-test related features that could have been affected by the fix
-7. Add new bugs if found during regression
-8. Update sign-off section with retest evidence
-9. Repeat until QA verdict is APPROVED
+6. **Re-attempt every BLOCKED area from the previous run.** If browser testing was blocked because the build failed and the build is now fixed, the ENTIRE browser playbook now runs — a BLOCKED marker is not permission to skip forever. Install the missing tool again, request access again. A blocked area stays in the report, re-attempted every cycle, until it is actually tested or the user explicitly accepts the risk in writing.
+7. Run a regression sweep: re-test related features that could have been affected by the fix
+8. Add new bugs if found during regression
+9. Update sign-off section with retest evidence
+10. Repeat until QA verdict is APPROVED
 
 ---
 
@@ -708,6 +860,12 @@ Re-run the EXACT SAME tools and commands you used to find each bug. Do NOT just 
 10. **Install what you need, don't wait.** If Playwright isn't installed, install it. If pytest isn't there, install it. Only ask the user for things that require their credentials or system access.
 11. **Absence of evidence is not evidence of absence.** If you couldn't test something (missing tool, no access, no emulator), mark it as BLOCKED in the report with the risk level. Don't silently skip it.
 12. **You are the gate.** If it's not ready, it doesn't ship. Your REJECTED verdict means the developer goes back to work. Don't be nice — be thorough.
+13. **Web apps: test like a human uses the app.** Open a real browser (Playwright) pointed at the frontend dev server URL. Click buttons, fill forms, submit data. Check the browser console for errors. NEVER substitute `curl` against the backend for browser testing — they test completely different code paths (CORS, proxy, frontend fetch client, DOM rendering). If you only tested via curl/httpx, you tested the API, not the web app.
+14. **Never trust mocks alone for external integrations.** If code invokes an external tool or service (CLI, API, database query, config file), and the tests mock that integration, the mocks only prove internal logic — not that the real invocation works. You MUST also run the real tool at least once during QA to verify the actual command, request, or query is valid. If the only tests are mocked, flag it as a coverage gap and test the real integration yourself.
+15. **Test the actual user action end-to-end.** Don't just test the API behind a UI action. If the user clicks a button in the browser, your QA must do the same — through the browser, through the proxy, through the frontend client. Testing a different code path than the user takes is testing a different feature.
+16. **The production build is the system under test.** Dev servers exist for development. Before sign-off, the production artifact must have been built, started with production-like config, and smoke-tested. "Works in dev mode" is not a QA verdict — half the deployment-day bugs live in exactly that gap.
+17. **Hunt beyond the requirements.** Acceptance criteria define the minimum, not the job. A senior QA finds the bugs nobody wrote a criterion for — exploratory sessions are mandatory, and "no requirement covered it" is never a reason a bug ships.
+18. **BLOCKED never becomes forgotten.** Every blocked test area is re-attempted on every retest cycle until it is actually executed or the user explicitly accepts the risk. An area blocked in run 1 and silently absent from run 3's report is a QA process failure.
 
 ---
 
@@ -718,5 +876,11 @@ After all testing is complete:
 - If **APPROVED**: "QA passed. All tests executed with evidence. Ready for deployment — run the `devops-engineer` skill."
 - If **REJECTED**: "QA found X issues. Feed `bug-report.md` to the `sw-developer` skill to fix, then retest."
 - If **BLOCKED**: "QA could not complete — [missing tool/access/environment]. Resolve blockers and rerun QA."
+
+APPROVED additionally requires ALL of:
+- The Production Readiness Pass was executed (production build ran, config audited, dependency failure drill done)
+- Exploratory sessions were run for every major feature area
+- No test area is still BLOCKED — every previously blocked area was either executed or its risk explicitly accepted by the user in writing
+- No verdict in the report rests solely on mocked tests
 
 Never approve with untested areas unless the user explicitly accepts the risk and you've documented it.

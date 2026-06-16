@@ -44,7 +44,7 @@ class PipelineRun(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     project_name: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., min_length=1, max_length=5000)
+    description: str = Field(..., min_length=1, max_length=50000)
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
     fast_model: str | None = None
@@ -87,7 +87,7 @@ class SecurityEvent(BaseModel):
 
 class PipelineCreate(BaseModel):
     project_name: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., min_length=1, max_length=5000)
+    description: str = Field(..., min_length=1, max_length=50000)
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
     fast_model: str | None = None
