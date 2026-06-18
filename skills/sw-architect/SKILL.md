@@ -20,6 +20,21 @@ description: Use when designing software architecture, planning new projects, an
 
 ---
 
+## ⛔ HARD GATE: SECURITY ARCHITECTURE IS NON-NEGOTIABLE
+
+> **A `plan.md` without a complete Security Architecture section (Section 8) is INCOMPLETE and MUST NOT be delivered.**
+> Security architecture is not "Section 8 if you have time" — it is a first-class, mandatory section that must be filled out with the same rigor as the technology stack or system architecture.
+> If you find yourself tempted to skip, abbreviate, or defer the security section: STOP. Go back and complete it.
+> The attack surface census (Step 5.5) and STRIDE threat modeling feed directly into this section — they are prerequisites, not optional extras.
+>
+> **Completion gate:** Before delivering plan.md, verify:
+> 1. Attack surface census is complete (Step 5.5)
+> 2. STRIDE threat model exists for every component
+> 3. Every subsection of Section 8 has concrete, project-specific content (not generic boilerplate)
+> 4. The Security Vulnerability Matrix (8.7) has project-specific risk ratings, not placeholder "..."
+
+---
+
 Acts as a senior software architect — analyzes requirements, recommends technology stacks, designs system architecture, and produces a comprehensive `plan.md`.
 
 ---
@@ -174,6 +189,13 @@ python -m scalene script.py  # CPU/memory profiling
 3. Define system boundaries and integration points
 4. Identify cross-cutting concerns: auth, logging, monitoring, error handling, caching, rate limiting
 5. **Security threat modeling** — perform for the designed architecture (see Security Architecture section below)
+6. **Design for isolation** — apply these principles to every component:
+   - **Small, focused units**: each component/module/service has a single, well-defined responsibility. If you can't describe what it does in one sentence, it's too big — split it.
+   - **Clear boundaries**: every unit has an explicit public interface (API contract, function signatures, event schema) and hides its internals. No reaching into another module's database tables, internal state, or private functions.
+   - **Well-defined interfaces between units**: document what each unit consumes (inputs, dependencies) and produces (outputs, events, side effects). If unit A depends on unit B, they communicate through a defined interface — never through shared mutable state or implicit coupling.
+   - **Independently testable**: each unit can be tested in isolation with its dependencies mocked/stubbed at the interface boundary. If testing a unit requires spinning up the entire system, the boundaries are wrong.
+   - **Independently deployable** (where architecture allows): changes to one unit should not force redeployment of unrelated units. Even in a monolith, modular boundaries should allow independent development and testing.
+   - **Failure isolation**: one unit's failure should not cascade. Define what happens at each boundary when the other side is down (timeout, fallback, circuit breaker, graceful degradation).
 
 ### Codebase Analysis (With Tool Execution)
 
@@ -243,6 +265,63 @@ Removing code is as risky as adding it — the danger is in what silently depend
 5. **Order of operations** — typically: stop writing to it → stop reading from it → remove UI/API surface → remove code → drop data last (so rollback is possible until the final step)
 6. **Blast radius & rollback** — for each step, worst case if it breaks and how to restore (a flag flip is a cheap rollback; a dropped table is not)
 7. **Leftover sweep** — orphaned dependencies now unused, dead config, docs referencing the removed feature
+
+---
+
+## Step 5.5 — Attack Surface Census (MANDATORY)
+
+### ⛔ NEVER SKIP — RUNS BEFORE ARCHITECTURE DESIGN ⛔
+
+Before designing the architecture (Step 6), perform a mandatory attack surface census. You cannot secure what you haven't mapped. This step feeds directly into the STRIDE threat model and Security Architecture section.
+
+### Entry Points
+
+Map **every** way data enters the system:
+
+| Entry Point | Protocol | Auth Required | Input Type | Trust Level |
+|-------------|----------|--------------|------------|-------------|
+| Public API endpoints | HTTPS/REST | Yes (JWT) | JSON body, query params, path params | Untrusted |
+| WebSocket connections | WSS | Yes (token in handshake) | Messages | Untrusted |
+| File uploads | HTTPS multipart | Yes | Binary files | Untrusted — treat as hostile |
+| Webhook receivers | HTTPS | Signature verification | JSON body | Semi-trusted (verify signature) |
+| Admin panel / dashboard | HTTPS | Yes (elevated role) | Form data, JSON | Trusted but verify |
+| CLI commands | Local process | OS-level auth | Command args, stdin | Trusted |
+| Message queue consumers | Internal protocol | Service-to-service auth | Serialized messages | Semi-trusted |
+| Cron / scheduled jobs | Internal | None (runs as service) | Config / DB state | Trusted |
+| Third-party OAuth callbacks | HTTPS | State parameter | Auth codes, tokens | Semi-trusted (validate state) |
+
+### Trust Boundaries
+
+Map every boundary where trust level changes:
+
+| Boundary | From (Trust Level) | To (Trust Level) | What Crosses | Validation Required |
+|----------|-------------------|-------------------|-------------|-------------------|
+| Browser → API server | Untrusted | Internal | User input, auth tokens | Full input validation, auth check |
+| API server → Database | Internal | Trusted storage | Queries, data | Parameterized queries, connection TLS |
+| API server → External API | Internal | External | API calls, credentials | TLS, credential scoping, response validation |
+| Service A → Service B | Internal | Internal | gRPC/HTTP calls | Service-to-service auth (mTLS or signed tokens) |
+| CDN → Origin | External cache | Internal | Cached responses | Cache-Control headers, origin auth |
+
+### Data Flow Paths
+
+For each major operation (user registration, payment, data export, etc.), trace the complete path:
+
+1. Where data enters (entry point)
+2. Every system it passes through
+3. Where it's stored (at rest)
+4. Where it exits (responses, exports, third-party sends)
+5. What transformations happen at each step
+6. What's logged at each step (and whether that logging is safe — no PII/secrets)
+
+### Sensitive Data Inventory
+
+| Data Type | Classification | Where Stored | Encrypted at Rest | Encrypted in Transit | Retention | Access Control |
+|-----------|---------------|-------------|-------------------|---------------------|-----------|---------------|
+| Passwords | Critical | DB (hashed) | bcrypt/Argon2id | TLS | Forever (hashed) | Auth service only |
+| PII (name, email) | Sensitive | DB | AES-256-GCM | TLS | Per retention policy | Role-based |
+| Payment data | Critical/PCI | External processor | N/A (not stored) | TLS | Not stored | N/A |
+| Session tokens | Sensitive | Redis | At-rest encryption | TLS | 7 days max | Auth service only |
+| Logs | Internal | Log aggregator | Volume encryption | TLS | 90 days | Ops team |
 
 ---
 
@@ -359,6 +438,37 @@ Every plan.md must include a comprehensive security section. Security is not opt
 | Dependency scanning | Automated CVE scanning in CI (Dependabot, Snyk, Trivy) |
 | Logging | Log auth events, access to sensitive data, errors — but NEVER log passwords, tokens, or PII |
 
+#### STRIDE Threat Model (MANDATORY per component)
+
+### ⛔ REQUIRED FOR EVERY COMPONENT ⛔
+
+For **each component** identified in the System Architecture, apply the STRIDE threat model. This is not optional — it is a mandatory step that produces a concrete matrix the project manager and developer use to create and verify security tasks.
+
+**STRIDE categories:**
+- **S**poofing — Can an attacker pretend to be someone/something else?
+- **T**ampering — Can an attacker modify data in transit or at rest?
+- **R**epudiation — Can an attacker deny performing an action without detection?
+- **I**nformation Disclosure — Can an attacker access data they shouldn't see?
+- **D**enial of Service — Can an attacker make the component unavailable?
+- **E**levation of Privilege — Can an attacker gain higher access than granted?
+
+**Produce this table for each component:**
+
+| Component: [Name] | Threat | Attack Scenario | Likelihood | Impact | Mitigation | Status |
+|--------------------|--------|----------------|------------|--------|------------|--------|
+| | Spoofing | [Specific scenario for THIS component] | HIGH/MED/LOW | HIGH/MED/LOW | [Specific mitigation] | Designed / TODO |
+| | Tampering | ... | ... | ... | ... | ... |
+| | Repudiation | ... | ... | ... | ... | ... |
+| | Info Disclosure | ... | ... | ... | ... | ... |
+| | DoS | ... | ... | ... | ... | ... |
+| | Elevation | ... | ... | ... | ... | ... |
+
+**Rules:**
+- Every cell must contain a project-specific scenario, not generic text. "SQL injection" is generic — "Attacker injects SQL via the `/api/v1/search?q=` parameter which hits the products full-text search query" is specific.
+- If a threat category doesn't apply to a component, state why (e.g., "N/A — this component has no user-facing input") rather than leaving it blank.
+- Mitigations must reference specific implementation details (library, configuration, code pattern) — not vague "use best practices."
+- Every HIGH-likelihood or HIGH-impact threat must map to a task in the Security & Hardening epic (the proj-manager enforces this).
+
 #### Security Testing Requirements (passed to proj-manager and qa-engineer)
 
 | Test Type | What to test | Tools |
@@ -396,7 +506,39 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 
 [2-3 paragraph overview: what we're building, key architectural decisions, and why]
 
-## 2. Requirements Summary
+## 2. Global Constraints
+
+> These constraints apply to EVERY task and EVERY component in this plan. Developers must not violate any of these regardless of which task they are working on.
+
+### Coding Standards
+- [Language version, style guide, linter config, formatter]
+- [Import ordering, naming conventions, file naming]
+
+### Testing Requirements
+- [Minimum coverage threshold, test types required per PR]
+- [Testing framework, assertion library, mock patterns]
+
+### Security Baselines
+- [Secrets: never in code, always env/secrets manager]
+- [Auth: every endpoint authenticated unless explicitly public]
+- [Input validation: schema validation on every API boundary]
+- [SQL: parameterized queries only, zero string interpolation]
+
+### Performance Budgets
+- [API response time targets (p50, p95, p99)]
+- [Frontend bundle size limits, Lighthouse score targets]
+- [Database query time limits]
+
+### Deployment Targets
+- [Target environment(s), container runtime, orchestration]
+- [CI/CD pipeline requirements, branch strategy]
+- [Environment parity requirements (dev ≈ staging ≈ prod)]
+
+### Dependency Rules
+- [Allowed/prohibited packages, version pinning policy]
+- [Vulnerability severity threshold for blocking PRs]
+
+## 3. Requirements Summary
 
 ### Functional Requirements
 - ...
@@ -410,13 +552,13 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Assumptions
 [Document any defaults assumed for unanswered questions]
 
-## 3. Technology Stack
+## 4. Technology Stack
 
 | Layer | Recommended | Runner-up | Rationale | Confidence |
 |-------|-------------|-----------|-----------|------------|
 | ... | ... | ... | ... | ... |
 
-## 4. System Architecture
+## 5. System Architecture
 
 ### High-Level Diagram
 
@@ -430,7 +572,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Data Flow
 [How data moves through the system for key operations]
 
-## 5. Data Architecture
+## 6. Data Architecture
 
 ### Key Entities
 [ER overview or entity descriptions]
@@ -441,7 +583,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Data Flow Patterns
 [Write paths, read paths, eventual consistency boundaries]
 
-## 6. API Design
+## 7. API Design
 
 ### API Style
 [REST / GraphQL / gRPC / hybrid — with reasoning]
@@ -452,7 +594,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Authentication & Authorization
 [Auth strategy, token management, RBAC/ABAC]
 
-## 7. Infrastructure & Deployment
+## 8. Infrastructure & Deployment
 
 ### Deployment Architecture
 [Containers, orchestration, serverless components]
@@ -463,9 +605,14 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Scaling Strategy
 [Horizontal/vertical, auto-scaling triggers, bottleneck analysis]
 
-## 8. Security Architecture
+## 9. Security Architecture
 
-### 8.1 Authentication & Identity
+### ⛔ THIS SECTION IS MANDATORY — plan.md IS INCOMPLETE WITHOUT IT
+
+### 9.1 Attack Surface Census
+[From Step 5.5 — entry points, trust boundaries, data flow paths, sensitive data inventory]
+
+### 9.2 Authentication & Identity
 | Decision | Choice | Details |
 |----------|--------|---------|
 | Auth strategy | [JWT/Session/OAuth2/OIDC] | ... |
@@ -473,31 +620,34 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | Token management | [storage, expiry, refresh rotation] | ... |
 | MFA | [TOTP/WebAuthn/SMS — with reasoning] | ... |
 
-### 8.2 API Security
+### 9.3 API Security
 [OWASP Top 10 mitigations mapped to this project's specific endpoints]
 [Rate limiting strategy per endpoint type]
 [Input validation approach — schema validation library + rules]
 [CORS, CSP, security headers configuration]
 
-### 8.3 Database Security
+### 9.4 Database Security
 [Connection encryption, credential management, access control]
 [Sensitive data encryption strategy — which fields, which algorithm]
 [Backup encryption and access policy]
 
-### 8.4 Secrets Management
+### 9.5 Secrets Management
 [Where secrets are stored per environment (dev/staging/prod)]
 [Rotation policy, pre-commit scanning tools]
 
-### 8.5 Network & Infrastructure Security
+### 9.6 Network & Infrastructure Security
 [HTTPS enforcement, TLS version, firewall rules]
 [Private subnet for databases, VPN for admin access]
 [Container security hardening if applicable]
 
-### 8.6 Security Testing Plan
+### 9.7 STRIDE Threat Model
+[Per-component STRIDE tables from Step 6]
+
+### 9.8 Security Testing Plan
 [SAST, DAST, dependency scanning, secret scanning — tools and CI integration]
 [Penetration testing recommendation before launch]
 
-### 8.7 Security Vulnerability Matrix
+### 9.9 Security Vulnerability Matrix
 | OWASP Category | Risk for This Project | Mitigation | Status |
 |---------------|----------------------|------------|--------|
 | A01: Broken Access Control | [HIGH/MED/LOW] | [specific mitigation] | Designed |
@@ -511,7 +661,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | A09: Logging Failures | ... | ... | ... |
 | A10: SSRF | ... | ... | ... |
 
-## 9. Cross-Cutting Concerns
+## 10. Cross-Cutting Concerns
 
 ### Observability
 [Logging, metrics, tracing, alerting]
@@ -522,35 +672,117 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Testing Strategy
 [Unit, integration, e2e, load testing approach]
 
-## 10. Architecture Decision Records
+## 11. Architecture Decision Records
 
 ### ADR-001: [Decision Title]
 - **Status**: Accepted
-- **Context**: [Why this decision was needed]
-- **Decision**: [What was decided]
-- **Consequences**: [Trade-offs accepted]
+- **Context**: [The problem or force driving this decision — what situation demands a choice]
+- **Decision**: [What was decided and why this option was chosen]
+- **Alternatives Considered**:
+  - [Option B] — rejected because [specific reason]
+  - [Option C] — rejected because [specific reason]
+- **Consequences**: [Trade-offs accepted, costs, risks introduced by this decision]
+- **Review Trigger**: [When to revisit — e.g., "if monthly active users exceed 100k", "if team grows past 5 developers", "after 6 months in production"]
 
 ### ADR-002: [Decision Title]
 ...
 
-## 11. Implementation Roadmap
+## 12. File Structure
+
+> Complete directory tree for the project. Every file that will be created, its purpose, and which component/task it belongs to. This section is the map that implementation tasks reference — no file should be created that isn't listed here.
+
+```
+project-root/
+├── README.md                          # Project overview and setup instructions
+├── package.json                       # Dependencies and scripts
+├── tsconfig.json                      # TypeScript configuration
+├── .env.example                       # Environment variable contract (all vars, no secrets)
+├── .gitignore                         # Git ignore rules
+├── docker-compose.yml                 # Local development environment
+├── Dockerfile                         # Production container build
+├── src/
+│   ├── index.ts                       # Application entry point — boots server, validates env
+│   ├── config/
+│   │   └── env.ts                     # Env var validation and typed config export
+│   ├── modules/
+│   │   ├── auth/
+│   │   │   ├── auth.controller.ts     # Auth route handlers (login, register, refresh)
+│   │   │   ├── auth.service.ts        # Auth business logic (hash, verify, token generation)
+│   │   │   ├── auth.middleware.ts     # JWT verification middleware
+│   │   │   ├── auth.schema.ts         # Input validation schemas (Zod/Joi)
+│   │   │   └── auth.test.ts           # Auth unit + integration tests
+│   │   └── [module-name]/
+│   │       ├── [module].controller.ts
+│   │       ├── [module].service.ts
+│   │       ├── [module].schema.ts
+│   │       └── [module].test.ts
+│   ├── middleware/
+│   │   ├── error-handler.ts           # Global error handling middleware
+│   │   ├── rate-limiter.ts            # Rate limiting configuration
+│   │   └── security-headers.ts        # Helmet/security headers setup
+│   ├── database/
+│   │   ├── connection.ts              # Database connection + pool config
+│   │   ├── migrations/                # Timestamped migration files
+│   │   └── seeds/                     # Development seed data
+│   └── shared/
+│       ├── types.ts                   # Shared TypeScript types/interfaces
+│       └── utils.ts                   # Shared utility functions
+├── tests/
+│   ├── e2e/                           # End-to-end test suites
+│   └── fixtures/                      # Shared test data
+└── .github/
+    └── workflows/
+        └── ci.yml                     # CI pipeline: lint, test, SAST, build
+```
+
+[Adapt this tree to the actual project. Every file must list its purpose. Group by module/feature. Mark files that are modified (not created) in hybrid mode.]
+
+## 13. Task Interfaces
+
+> Documents what each implementation task consumes and produces. The developer implementing Task N should be able to look here and know exactly what inputs are available and what outputs are expected, without reading the full plan.
+
+| Task | Consumes (inputs) | Produces (outputs) | Depends On |
+|------|-------------------|-------------------|------------|
+| Setup project skeleton | package.json template, tsconfig from ADR-001 | Buildable empty project, CI green | Nothing |
+| Database schema | ER diagram from Section 6, .env.example | Migration files, connection module, typed models | Project skeleton |
+| Auth module | Database models, JWT config from Section 9.2 | auth.controller.ts, auth.service.ts, auth.middleware.ts, auth.test.ts | Database schema |
+| [Feature] API endpoints | Auth middleware, database models, validation schemas | Controller, service, schema, tests for [feature] | Auth module, Database schema |
+| Security hardening | All modules, rate-limiter config from Section 9.3 | Configured middleware, pre-commit hooks, SAST CI step | All feature modules |
+| ... | ... | ... | ... |
+
+## 14. Implementation Roadmap
 
 ### Phase 1: [Foundation] — [timeframe]
-- ...
+
+> Each step is bite-sized (2-5 minutes of implementation). No step says "implement X" — each describes the concrete code to write.
+
+#### Steps:
+1. **Initialize project** — Run `npx create-...`, configure tsconfig with strict mode, add .gitignore, create .env.example with all required vars documented
+2. **Add linting and formatting** — Install ESLint + Prettier, create config files matching Global Constraints coding standards, add `lint` and `format` scripts to package.json
+3. **Set up database connection** — Install ORM/driver, create `src/database/connection.ts` with pool config, TLS enabled, connection validation on startup
+4. **Create first migration** — Write migration for [specific table] with columns [list them], add migration scripts to package.json
+5. **Add env validation** — Create `src/config/env.ts` using Zod schema that validates all required env vars at startup, fails fast with clear error messages
+6. **Set up test infrastructure** — Install test runner, create first smoke test that verifies the app boots and connects to DB
+7. ...
 
 ### Phase 2: [Core Features] — [timeframe]
-- ...
+
+#### Steps:
+1. **[Specific step]** — [Concrete description of what code to write, what file to create, what test to add]
+2. ...
 
 ### Phase 3: [Scale & Polish] — [timeframe]
-- ...
 
-## 12. Risks & Mitigations
+#### Steps:
+1. ...
+
+## 15. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | ... | HIGH/MED/LOW | HIGH/MED/LOW | ... |
 
-## 13. Open Questions
+## 16. Open Questions
 
 - [Questions that need stakeholder input or further investigation]
 ```
@@ -566,7 +798,29 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 
 [2-3 paragraphs: what exists today, what's changing, and the high-level approach to getting there safely]
 
-## 2. Current Architecture Snapshot
+## 2. Global Constraints
+
+> These constraints apply to EVERY task in this change package. They override any local convenience.
+
+### Coding Standards
+- [Must match existing codebase conventions — document what those are]
+- [Any new standards introduced by this change package]
+
+### Testing Requirements
+- [Existing test coverage must not decrease]
+- [New code requires: unit tests + integration tests minimum]
+
+### Security Baselines
+- [Same as greenfield — secrets, auth, input validation, parameterized queries]
+
+### Performance Budgets
+- [Existing performance baselines that must not regress]
+- [New targets for new features]
+
+### Backward Compatibility
+- [API versioning rules, data format compatibility requirements]
+
+## 3. Current Architecture Snapshot
 
 ### Detected Stack
 | Layer | Technology | Version |
@@ -578,7 +832,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 [current architecture diagram — highlight components that will change]
 ```
 
-## 3. New Requirements Summary
+## 4. New Requirements Summary
 
 ### From requirements.md (if provided)
 - FR-XXX: ...
@@ -587,7 +841,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Stated by user
 - ...
 
-## 4. Impact Analysis
+## 5. Impact Analysis
 
 ### Component Impact Matrix
 | Component | Change Type | Files Affected | Risk | Existing Tests | Tests Need Update |
@@ -612,13 +866,13 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 [order of changes — what must happen before what]
 ```
 
-## 5. Blast Radius Assessment
+## 6. Blast Radius Assessment
 
 | Change | Worst Case If It Fails | Affected Users/Systems | Rollback Strategy | Rollback Time |
 |--------|----------------------|----------------------|-------------------|---------------|
 | ... | ... | ... | ... | ... |
 
-## 6. Technology Stack Changes
+## 7. Technology Stack Changes
 
 | Layer | Current | Proposed Change | Rationale | Confidence |
 |-------|---------|----------------|-----------|------------|
@@ -626,7 +880,7 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | ... | ... → ... | upgrade/replace | ... | HIGH/MED/LOW |
 | ... | — (new) | add ... | ... | HIGH/MED/LOW |
 
-## 7. Architecture Changes
+## 8. Architecture Changes
 
 ### Updated Architecture Diagram
 ```mermaid
@@ -642,7 +896,25 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Removed Components (if any)
 [What's being removed and migration path for its consumers]
 
-## 8. Cross-Cutting Concerns
+## 9. Security Architecture
+
+### ⛔ THIS SECTION IS MANDATORY — plan.md IS INCOMPLETE WITHOUT IT
+
+### 9.1 Attack Surface Census
+[Entry points, trust boundaries, data flow paths — focus on NEW and CHANGED surfaces]
+
+### 9.2 STRIDE Threat Model
+[Per-component STRIDE tables for new/changed components]
+
+### 9.3 Security Impact of Changes
+[Do the changes introduce new attack surfaces? New trust boundaries? New data flows?]
+
+### 9.4 Security Vulnerability Matrix
+| OWASP Category | Risk for This Project | Mitigation | Status |
+|---------------|----------------------|------------|--------|
+| A01–A10 rows... | ... | ... | ... |
+
+## 10. Cross-Cutting Concerns
 
 ### Security Impact
 [Do the changes introduce new attack surfaces?]
@@ -653,34 +925,61 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Testing Strategy
 [New tests needed, existing tests to update, recommended test approach for the changes]
 
-## 9. Architecture Decision Records
+## 11. Architecture Decision Records
 
 ### ADR-001: [Decision Title]
 - **Status**: Proposed
-- **Context**: [Why this decision is needed for the new requirements]
-- **Decision**: [What was decided]
+- **Context**: [The problem or force driving this decision]
+- **Decision**: [What was decided and why]
+- **Alternatives Considered**:
+  - [Option B] — rejected because [specific reason]
+  - [Option C] — rejected because [specific reason]
 - **Consequences**: [Trade-offs, especially impact on existing system]
+- **Review Trigger**: [When to revisit this decision]
 
-## 10. Implementation Roadmap
+## 12. File Structure
+
+> Every file that will be created or modified by this change package.
+
+| File Path | Action | Purpose | Component |
+|-----------|--------|---------|-----------|
+| src/modules/auth/auth.service.ts | MODIFY | Add refresh token rotation | Auth |
+| src/modules/billing/billing.controller.ts | CREATE | New billing API endpoints | Billing |
+| src/database/migrations/003_add_billing.ts | CREATE | Billing tables schema | Database |
+| ... | ... | ... | ... |
+
+## 13. Task Interfaces
+
+| Task | Consumes (inputs) | Produces (outputs) | Depends On |
+|------|-------------------|-------------------|------------|
+| ... | ... | ... | ... |
+
+## 14. Implementation Roadmap
 
 ### Phase 0: Preparation — [timeframe]
-- [Database migrations, feature flags, backward-compatible API versions]
-- [Each step independently deployable and rollback-safe]
+
+#### Steps:
+1. **[Specific step]** — [Concrete description: what file to change, what code to add, what test to update. 2-5 minutes of work.]
+2. ...
 
 ### Phase 1: Core Changes — [timeframe]
-- ...
+
+#### Steps:
+1. ...
 
 ### Phase 2: Cutover & Cleanup — [timeframe]
-- [Remove old code paths, deprecate old APIs, clean up feature flags]
 
-## 11. Risks & Mitigations
+#### Steps:
+1. [Remove old code paths, deprecate old APIs, clean up feature flags]
+
+## 15. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | Data migration corrupts existing records | LOW | CRITICAL | Run migration on staging with prod data copy first |
 | ... | ... | ... | ... |
 
-## 12. Open Questions
+## 16. Open Questions
 
 - [Decisions needing stakeholder input before starting]
 ```
@@ -696,7 +995,20 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 
 [2-3 paragraph overview: what the system does, overall health assessment, top priorities]
 
-## 2. Current Architecture
+## 2. Global Constraints (Recommended)
+
+> Constraints the team should adopt based on review findings. Each tied to a specific weakness discovered.
+
+### Coding Standards
+- [Recommendations based on anti-patterns found]
+
+### Security Baselines
+- [Recommendations based on security audit findings]
+
+### Performance Budgets
+- [Recommendations based on profiling results]
+
+## 3. Current Architecture
 
 ### Detected Stack
 | Layer | Technology | Version |
@@ -714,17 +1026,28 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Data Models
 [Key entities and relationships]
 
-## 3. Strengths
+## 4. File Structure (Current State)
+
+> Annotated directory tree showing current organization, with notes on files that need attention.
+
+```
+[Current directory tree with annotations like:
+  src/auth/login.js  # ⚠ hardcoded secret on line 42
+  src/db/queries.js  # ⚠ string-concatenated SQL
+]
+```
+
+## 5. Strengths
 
 - [What's working well, good patterns found]
 
-## 4. Weaknesses & Technical Debt
+## 6. Weaknesses & Technical Debt
 
 | Issue | Severity | Location | Impact |
 |-------|----------|----------|--------|
 | ... | CRITICAL/HIGH/MEDIUM/LOW | ... | ... |
 
-## 5. Recommended Improvements
+## 7. Recommended Improvements
 
 ### Quick Wins (< 1 week each)
 - ...
@@ -735,15 +1058,23 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 ### Long-Term (1+ months)
 - ...
 
-## 6. Security Audit Results
+## 8. Security Audit Results
 
-### Vulnerabilities Found
+### ⛔ THIS SECTION IS MANDATORY
+
+### 8.1 Attack Surface Census (Current State)
+[Map existing entry points, trust boundaries, data flows]
+
+### 8.2 STRIDE Threat Model (Current State)
+[Per-component STRIDE tables for existing architecture — identifies unmitigated threats]
+
+### 8.3 Vulnerabilities Found
 | ID | Severity | Category | Location | Description | Recommended Fix |
 |----|----------|----------|----------|-------------|-----------------|
 | SEC-001 | CRITICAL | ... | file:line | ... | ... |
 | SEC-002 | HIGH | ... | file:line | ... | ... |
 
-### Security Posture Summary
+### 8.4 Security Posture Summary
 | Area | Status | Notes |
 |------|--------|-------|
 | Password hashing | [OK/WEAK/MISSING] | [what's used, what should be used] |
@@ -757,31 +1088,34 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | Rate limiting | [OK/MISSING] | [which endpoints lack protection] |
 | Logging security | [OK/LEAKING] | [PII/secrets in logs?] |
 
-### Security Improvement Roadmap
+### 8.5 Security Improvement Roadmap
 [Prioritized list of security fixes — CRITICAL first, with specific remediation steps]
 
-## 7. Migration Path
+## 9. Migration Path
 
 ### Step 1: [Description] — [timeframe]
 [Incremental change, not big-bang]
 
 ### Step 2: ...
 
-## 8. Architecture Decision Records
+## 10. Architecture Decision Records
 
 ### ADR-001: [Decision Title]
 - **Status**: Proposed
-- **Context**: [Why this change]
-- **Decision**: [What to do]
+- **Context**: [The problem or force driving this recommendation]
+- **Decision**: [What to do and why]
+- **Alternatives Considered**:
+  - [Option B] — rejected because [specific reason]
 - **Consequences**: [Trade-offs]
+- **Review Trigger**: [When to revisit]
 
-## 9. Risks & Mitigations
+## 11. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | ... | ... | ... | ... |
 
-## 10. Open Questions
+## 12. Open Questions
 
 - [Areas needing deeper investigation or stakeholder input]
 ```
@@ -817,13 +1151,33 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | Job / cron / infra | name | ... |
 | Tests | files | will be removed/updated |
 
-## 4. Consumer Impact
+## 4. File Structure Impact
+
+> Every file affected by the removal — what happens to each.
+
+| File Path | Action | Reason |
+|-----------|--------|--------|
+| src/modules/legacy-auth/index.ts | DELETE | Entire module being removed |
+| src/routes/api.ts | MODIFY | Remove route registration for legacy endpoints |
+| src/database/migrations/005_drop_legacy.ts | CREATE | Migration to drop legacy tables |
+| tests/legacy-auth.test.ts | DELETE | Tests for removed feature |
+| ... | ... | ... |
+
+## 5. Consumer Impact
 
 | Consumer | How it depends | Breaks if removed? | Migration path |
 |----------|----------------|--------------------|----------------|
 | [external client / service / feature] | ... | yes/no | ... |
 
-## 5. Removal Sequence (each step independently deployable & reversible)
+## 6. Security Impact
+
+### Attack Surface Changes
+[What entry points, trust boundaries, or data flows are being removed? Does removal reduce attack surface?]
+
+### Data Fate Security
+[If data is archived — where, with what encryption, with what access control? If deleted — is it purged from backups too?]
+
+## 7. Removal Sequence (each step independently deployable & reversible)
 
 | Step | Action | Reversible? | Rollback |
 |------|--------|-------------|----------|
@@ -832,20 +1186,71 @@ Write the plan to `<working_directory>/plan.md` using the appropriate template b
 | 3 | Remove code | yes | revert commit |
 | 4 | Drop data | NO | restore from backup |
 
-## 6. Blast Radius
+## 8. Blast Radius
 
 | Step | Worst case if it fails | Affected users/systems | Rollback time |
 |------|------------------------|------------------------|---------------|
 
-## 7. Leftover Sweep
+## 9. Leftover Sweep
 
 - [Now-orphaned dependencies to remove, dead config, docs to update]
 
-## 8. Risks & Open Questions
+## 10. Architecture Decision Records
+
+### ADR-001: [Decision to Remove]
+- **Status**: Proposed
+- **Context**: [Why this removal is needed]
+- **Decision**: [Hard removal vs. phased deprecation, with reasoning]
+- **Alternatives Considered**:
+  - [Keep but deprecate] — rejected because [reason]
+  - [Rewrite instead of remove] — rejected because [reason]
+- **Consequences**: [What breaks, what improves, what's irreversible]
+- **Review Trigger**: [When to confirm removal is complete and no side effects remain]
+
+## 11. Risks & Open Questions
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 ```
+
+---
+
+## Step 7.5 — Plan Self-Review (MANDATORY before delivery)
+
+### ⛔ NEVER SKIP — RUN BEFORE DELIVERING plan.md ⛔
+
+Before declaring plan.md complete, run this formal self-review. If any check fails, fix the issue before proceeding to the summary.
+
+### Placeholder Scan
+- Search the entire plan.md for: `TBD`, `TODO`, `[fill in]`, `[fill in later]`, `implement X`, `add Y`, `...` used as content (not in table templates), `[placeholder]`, `[to be determined]`, `[TBC]`
+- **Zero tolerance.** Every section must have concrete, project-specific content. If you don't have enough information to fill a section, state a specific assumption and fill it based on that assumption — never leave it blank or placeholder.
+
+### Internal Consistency
+- Every component referenced in ADRs, roadmap, or task interfaces exists in the System Architecture section
+- ADR numbers are sequential with no gaps (ADR-001, ADR-002, ...)
+- File paths in the File Structure section are consistent with file paths referenced in implementation steps
+- Technology choices in the Tech Stack table match technologies referenced in implementation steps
+- STRIDE threat model components match the components in the System Architecture section
+
+### Spec Coverage
+- Every functional requirement from `requirements.md` maps to at least one component in the architecture
+- Every non-functional requirement maps to a specific section (performance → scaling strategy, security → Section 9, etc.)
+- No requirement is unaddressed — if a requirement was intentionally deferred, it's documented in Open Questions with reasoning
+
+### Type Consistency
+- Technology choices don't contradict each other (e.g., recommending PostgreSQL in the Tech Stack but referencing MongoDB queries in the Data Architecture)
+- Framework choices align with language choices
+- Infrastructure choices align with deployment targets in Global Constraints
+
+### Scope Check
+- The plan doesn't introduce features, components, or capabilities not traceable to a requirement
+- If the plan adds something not in requirements (e.g., a monitoring stack), it's justified by a non-functional requirement or an explicit assumption
+
+### Security Completeness
+- Attack surface census (Step 5.5) is complete and referenced in Section 9.1
+- STRIDE threat model exists for every component in the System Architecture
+- Every OWASP category in the Security Vulnerability Matrix has a project-specific risk rating (not "...")
+- Every HIGH-risk item in the STRIDE model or OWASP matrix has a concrete mitigation, not "use best practices"
 
 ---
 
@@ -856,10 +1261,11 @@ After writing plan.md, present a brief summary:
 1. **Mode used** — Greenfield / Codebase Analysis / Requirements Doc / Hybrid
 2. **Key decisions** — The 2-3 most important architectural choices made
 3. **Top tech recommendations** — The primary stack picks with one-line reasoning each
-4. **Security posture** — Auth strategy chosen, top security risks identified, critical vulnerabilities found (codebase mode)
+4. **Security posture** — Auth strategy chosen, top security risks identified, critical vulnerabilities found (codebase mode), STRIDE threat count (X HIGH, Y MEDIUM threats identified and mitigated)
 5. **Impact summary (Hybrid only)** — Components affected, risk level, estimated blast radius
 6. **Plan location** — Full path to the generated `plan.md`
-7. **Suggested next steps** — What the user should do next (review specific sections, validate assumptions with stakeholders, prototype critical paths, fix critical security vulnerabilities first, etc.)
+7. **Self-review results** — Confirm all checks passed, or note any items flagged for user attention
+8. **Suggested next steps** — What the user should do next (review specific sections, validate assumptions with stakeholders, prototype critical paths, fix critical security vulnerabilities first, etc.)
 
 ---
 
@@ -870,8 +1276,13 @@ After writing plan.md, present a brief summary:
 - **Design for the real team** — A team of 2 juniors shouldn't get a microservices architecture. Match complexity to capability.
 - **Non-functional requirements are first-class** — Performance, security, observability, and maintainability are not afterthoughts. Address them explicitly.
 - **Incremental over big-bang** — For migrations and improvements, always propose incremental steps. Each step should be independently deployable and rollback-safe.
-- **Use ADRs** — Every significant architectural decision gets an ADR. These are the most durable part of the plan.
+- **Use ADRs** — Every significant architectural decision gets an ADR with full formal reasoning: Context, Decision, Alternatives Considered, Consequences, and Review Trigger. These are the most durable part of the plan.
 - **Don't over-engineer** — Match complexity to actual requirements, not hypothetical future ones. Three simple services beat a premature CQRS setup.
 - **State confidence honestly** — Use HIGH / MEDIUM / LOW confidence levels. LOW is fine — it tells the user where to invest more investigation.
 - **Reasonable defaults** — When the user hasn't specified something, pick a sensible default, document it as an assumption, and move on. Don't ask again.
 - **Security is non-negotiable** — Every plan includes a full security architecture section regardless of whether the user asked for it. Passwords are ALWAYS hashed with bcrypt or Argon2id, secrets are NEVER in code, SQL injection is ALWAYS prevented with parameterized queries, HTTPS is ALWAYS enforced. These are not optional — they are baseline requirements. The security section must be detailed enough that the project manager can create security-specific tasks and the developer knows exactly what to implement.
+- **Design for isolation** — Every component should be a small, focused unit with clear boundaries and well-defined interfaces. Units must be independently testable. If a unit can't be tested without spinning up the entire system, the boundaries are wrong. Prefer explicit interfaces over implicit coupling.
+- **No placeholders ever** — plan.md must never contain placeholder text: no "TBD", "TODO", "[fill in later]", "implement X as needed", or "..." used as content filler. Every section has concrete, project-specific content. If information is missing, state an assumption and proceed — a wrong assumption that's documented is better than a blank section that never gets filled.
+- **Bite-sized implementation steps** — Every phase in the Implementation Roadmap breaks down into steps that take 2-5 minutes each. Each step describes the concrete code to write — not "implement the auth module" but "create auth.service.ts with bcrypt password hashing function, accepting plaintext and returning hash, with unit test." The developer reading the step should know exactly what file to create, what code to write, and what test to run.
+- **File structure before tasks** — Always map the complete file structure before defining implementation tasks. The developer should see the full directory tree and know where every file lives before writing any code.
+- **Task interfaces are explicit** — Every implementation task documents what it consumes (inputs, files, dependencies) and what it produces (outputs, files, APIs). A developer should be able to implement any task by looking at its interface definition without reading the full plan.
