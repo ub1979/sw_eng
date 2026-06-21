@@ -359,6 +359,23 @@ jobs:
           languages: javascript-typescript
       - uses: github/codeql-action/analyze@v3
 
+  claude-security-review:
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: "Review this PR for security vulnerabilities. Focus on: injection flaws, auth bypass, secrets exposure, SSRF, path traversal, and insecure deserialization. Report findings inline as PR comments."
+          timeout_minutes: 10
+
   build:
     runs-on: ubuntu-latest
     needs: [test, security]
@@ -1070,6 +1087,81 @@ terraform init && terraform validate && echo "✓ Terraform config valid" || ech
 terraform plan -out=tfplan && echo "✓ Terraform plan succeeded" || echo "⛔ Terraform plan failed"
 # NEVER run terraform apply without user approval
 ```
+
+---
+
+## Step 12.5 — Post-Deploy Canary Monitoring (MANDATORY after production deploys)
+
+> **Inspired by gstack /canary: monitor the live app immediately after deployment.**
+
+Deployment is not done when the deploy command succeeds — it's done when the app is verified healthy in production. Run a canary loop immediately after deploying:
+
+### Canary Protocol
+
+1. **Immediate health check** — within 30 seconds of deploy:
+   ```bash
+   # Hit health endpoint repeatedly for 2 minutes
+   for i in $(seq 1 12); do
+     STATUS=$(curl -sf -o /dev/null -w "%{http_code}" https://app.example.com/health)
+     echo "[$(date +%T)] Health: $STATUS"
+     test "$STATUS" = "200" || echo "⛔ HEALTH CHECK FAILED — consider rollback"
+     sleep 10
+   done
+   ```
+
+2. **Smoke test critical paths** — within 5 minutes of deploy:
+   - Hit the 3-5 most important API endpoints
+   - Load the homepage and one authenticated page (if browser tools available)
+   - Verify database connectivity through the app
+   - Check error rates haven't spiked
+
+3. **Monitor for 10 minutes** — watch for delayed failures:
+   ```bash
+   # Check error logs for new errors
+   docker logs --since 10m app-container 2>&1 | grep -c "ERROR\|FATAL\|PANIC"
+   
+   # Check response time hasn't degraded
+   for i in $(seq 1 5); do
+     curl -sf -o /dev/null -w "Response time: %{time_total}s\n" https://app.example.com/api/health
+     sleep 120
+   done
+   ```
+
+4. **Compare against baseline** (if previous canary report exists):
+   - Response time: flag if >20% slower than baseline
+   - Error rate: flag if any new error types appear
+   - Memory/CPU: flag if usage is significantly higher
+
+5. **Auto-rollback trigger** — if ANY of these occur during canary:
+   - Health endpoint returns non-200 for >1 minute
+   - Error rate exceeds 5% of requests
+   - Response time p95 exceeds 2x baseline
+   - Application crash/restart loop detected
+
+### Canary Report
+
+Write to `.sdlc/canary-report.md`:
+
+```markdown
+# Canary Report — [version] deployed [timestamp]
+
+## Health Checks: PASS/FAIL
+[Table of health check results over 10 minutes]
+
+## Smoke Tests: PASS/FAIL
+[Results of critical path tests]
+
+## Baseline Comparison
+| Metric | Baseline | Current | Delta | Status |
+|--------|----------|---------|-------|--------|
+| Response time (p95) | Xms | Xms | +X% | OK/WARN/FAIL |
+| Error rate | X% | X% | +X% | OK/WARN/FAIL |
+| Memory usage | XMB | XMB | +X% | OK/WARN/FAIL |
+
+## Verdict: HEALTHY / DEGRADED / ROLLBACK REQUIRED
+```
+
+**⛔ VERIFICATION: If canary fails, rollback BEFORE reporting. The deploy is not "done with issues" — it's rolled back and reported as FAILED.**
 
 ---
 

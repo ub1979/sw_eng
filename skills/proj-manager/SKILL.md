@@ -92,6 +92,30 @@ Examples:
 
 **Every subsequent design decision must serve this sentence.** If a choice doesn't reinforce the memorable thing, it's wrong.
 
+### Step 2.3.5 — ASCII Wireframes (Quick Visual Validation)
+
+> **Inspired by Anthropic's frontend-design plugin: validate layout before committing to tokens.**
+
+Before defining design tokens, sketch the key pages as ASCII wireframes. This catches layout problems before they're baked into the design system:
+
+```
+┌─────────────────────────────────────┐
+│ [Logo]          [Nav] [Nav] [Avatar]│
+├─────────────────────────────────────┤
+│                                     │
+│   ┌──────────┐  ┌──────────────┐   │
+│   │ Sidebar  │  │  Main Content│   │
+│   │ • Item 1 │  │              │   │
+│   │ • Item 2 │  │  ┌────┐┌───┐│   │
+│   │ • Item 3 │  │  │Card││Crd││   │
+│   │          │  │  └────┘└───┘│   │
+│   └──────────┘  └──────────────┘   │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+Sketch 2-3 key screens. Include in `project-plan.md` Section 3 before the design tokens. The wireframes are throwaway — their purpose is to validate spatial decisions (sidebar vs. top nav, card layout, content hierarchy) before investing in pixel-level specs.
+
 ### Step 2.4 — Design System Specification
 
 **Then validate with tools:**
@@ -238,6 +262,10 @@ The following are specific anti-patterns that make AI-generated designs instantl
 | 8 | Every section is full-width with max-width: 1200px centered | Safe but boring. No spatial drama. | Break sections out of the container. Use bleeds, insets, and width variations. |
 | 9 | Linear top-to-bottom scroll with no visual surprises | No delight, no memory. Users forget the page instantly. | Add scroll-triggered reveals, parallax layers, or interactive moments every 2-3 sections. |
 | 10 | "Clean and minimal" as the entire design philosophy | Minimal is an absence of decisions, not a decision. | State what the design IS, not what it isn't. "Bold industrial typography with warm accent photography." |
+
+| 11 | Warm cream background + serif font + terracotta accents | The "Anthropic design plugin" default. Feels artisanal but is now as generic as purple gradients. | Research the domain's actual visual language. Cream+serif is fine IF the domain warrants it AND you differentiate. |
+| 12 | Near-black background + acid green/cyan accents | The "hacker aesthetic" default. Every AI dev tool looks like this now. | Use the domain's palette. Dark themes are fine with unique accent choices. |
+| 13 | Broadsheet newspaper layout with heavy serif headlines | The "editorial" default. Distinctive 2 years ago, now AI template fodder. | If going editorial, commit fully with custom illustration and photography, not just typeface. |
 
 **Audit process**: After completing the design system, score each section against this blacklist. If 3+ anti-patterns are present, the design system FAILS and must be revised.
 

@@ -439,9 +439,57 @@ Write to `<working_directory>/review-report.md`:
 - **Review tests as carefully as code** — bad tests are worse than no tests (false confidence)
 - **Run it before you judge it** — a review that never built and started the production artifact is a half-review
 - **Open findings never expire** — every unresolved MAJOR+ from previous reports carries forward until verified fixed or user-accepted
-- **No performative agreement** — when receiving suggestions from others, verify before implementing. Don't agree just to be agreeable.
 - **Context matters** — a prototype has different standards than a banking app. Review proportionally.
 - **Evidence before claims** — "This looks fine" is not a finding. Cite evidence it IS fine, or flag as unverified.
+
+### ⛔ Anti-Sycophancy Protocol (When Receiving Review Feedback)
+
+> **Inspired by obra/Superpowers receiving-code-review skill.**
+
+When processing feedback from other reviewers, users, or previous review rounds:
+
+**BANNED phrases** — never use these when receiving suggestions:
+- "You're absolutely right!"
+- "Great point!"
+- "Thanks for catching that!"
+- "Good catch!"
+- Any variation of agreeing-before-evaluating
+
+**REQUIRED protocol** — for every piece of feedback received:
+1. **Evaluate technically** — does the suggestion actually improve the code? Read the specific lines.
+2. **YAGNI check** — is this solving a real problem, or a hypothetical future one?
+3. **Regression check** — will implementing this suggestion break something else?
+4. **Pushback when warranted** — if a suggestion is wrong, say so with evidence. "This suggestion would introduce X because Y" is more valuable than blind compliance.
+5. **Partial adoption** — accept the parts that improve things, reject the parts that don't. "The null check is valid, but the abstraction is premature" is a legitimate response.
+
+A reviewer who implements every suggestion without evaluating them is not reviewing — they're rubber-stamping.
+
+---
+
+## Code Slop-Scan (AI-Generated Code Anti-Patterns)
+
+> **Inspired by gstack /slop-scan: detect patterns that scream "AI wrote this and nobody reviewed it."**
+
+Flag any of these as code quality findings (severity: MINOR to MAJOR depending on density):
+
+| # | Anti-Pattern | Why It's Slop | What To Do Instead |
+|---|---|---|---|
+| 1 | Excessive try/catch wrapping every function | AI hedges by catching everything — hides real errors | Catch at boundaries only, let errors propagate |
+| 2 | Redundant null checks after guaranteed-non-null operations | AI adds defensive code without understanding the data flow | Trust the type system and upstream guarantees |
+| 3 | Over-commented obvious code (`// increment counter` above `counter++`) | AI narrates what code does instead of why | Remove obvious comments, keep only WHY comments |
+| 4 | Gratuitous abstraction layers (interface → abstract class → concrete class for one implementation) | AI creates enterprise patterns for simple problems | Use the simplest structure that works |
+| 5 | Copy-pasted logic with minor variations instead of a shared function | AI generates each instance fresh instead of extracting patterns | Extract shared logic into a utility |
+| 6 | Inconsistent naming (camelCase in one file, snake_case in another) | AI doesn't maintain project conventions across files | Follow the existing convention consistently |
+| 7 | Unused imports, variables, or functions left in place | AI generates then forgets to clean up | Remove all dead code |
+| 8 | Magic numbers and strings scattered through logic | AI inlines values instead of defining constants | Extract to named constants |
+| 9 | Functions over 50 lines with multiple levels of nesting | AI generates linear solutions without decomposition | Break into smaller, focused functions |
+| 10 | Generic variable names (`data`, `result`, `temp`, `item`, `obj`) | AI uses placeholder names that don't communicate intent | Use descriptive names that explain the domain |
+
+**Scoring**: Count slop instances across the codebase.
+- 0-2: Clean — no flag
+- 3-5: MINOR — "AI slop detected in N instances, clean up recommended"
+- 6-10: MAJOR — "Significant AI slop — codebase needs a cleanup pass"
+- 11+: BLOCKER — "Codebase appears largely unreviewed AI output — comprehensive cleanup required"
 
 ---
 

@@ -554,6 +554,36 @@ Wait for both to complete.
 
 📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: DevOps, Phase: Docs
 
+**Phase 8.5: Post-Deploy Canary (If DevOps deployed to staging/production)**
+
+> This phase runs automatically if the devops-engineer deployed the app. If no deployment happened, skip.
+
+The devops-engineer's Step 12.5 (Post-Deploy Canary) should have run during Phase 7/8. Verify:
+1. Read `.sdlc/canary-report.md` — was it created?
+2. Check verdict: HEALTHY / DEGRADED / ROLLBACK REQUIRED
+3. If ROLLBACK REQUIRED: the devops-engineer should have already rolled back. Verify the rollback succeeded.
+4. If DEGRADED: present findings to user — "Canary shows degraded performance after deploy. Investigate?"
+
+CHECKPOINT (if canary ran): "Post-deploy canary: [HEALTHY / DEGRADED / ROLLED BACK]. Review canary-report.md."
+
+📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: Canary, verdict, metrics summary
+
+**Phase 9: Redaction Guard (Pre-commit/Pre-push safety net)**
+
+> Inspired by gstack's redaction guard. Run before final commit/push.
+
+Before the final commit or push of the completed project, scan for accidental exposure:
+
+1. **Secrets scan**: `grep -rn "AKIA\|sk-\|ghp_\|glpat-\|password\s*=\s*['\"]" src/ --include='*.ts' --include='*.js' --include='*.py' --include='*.go' --include='*.yml' --include='*.yaml'`
+2. **PII scan**: Check for hardcoded emails, phone numbers, IP addresses in non-test code
+3. **Env file check**: Verify `.env` and any credential files are in `.gitignore`
+4. **Git staged check**: `git diff --cached --name-only` — flag any `.env`, `*.pem`, `*.key`, `credentials.*` files
+5. If any secrets/PII found: BLOCK the commit and fix first
+
+This is a lightweight safety net, not a replacement for the security-auditor's deep scan.
+
+📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: Redaction Guard, findings (if any)
+
 **DONE — Final Summary & Branch Disposition**
 
 After the pipeline completes, present the summary AND offer branch disposition:
