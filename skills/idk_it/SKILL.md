@@ -1,6 +1,6 @@
 ---
 name: idk_it
-description: The single entry point that orchestrates the entire software development lifecycle. Dispatches 9 specialized agents (req-engineer, sw-architect, proj-manager, sw-developer, code-reviewer, qa-engineer, devops-engineer, tech-writer, security-auditor) in the right order based on what you ask for. Use this skill whenever the user mentions build me, create, new project, new app, modify, add feature, remove feature, fix bug, deploy, test, review code, write docs, security audit, I want to build, make me a, develop, start a project, continue working, what's next, ship it, refactor, improve, debug, go live, CI/CD, document this, plan this, architect this, or ANY software development request. This is the default entry point for all software development work.
+description: The single entry point that orchestrates the entire software development lifecycle. Dispatches 9 specialized agents (req-engineer, sw-architect, task-planner, sw-developer, code-reviewer, qa-engineer, devops-engineer, tech-writer, security-auditor) in the right order based on what you ask for. Use this skill whenever the user mentions build me, create, new project, new app, modify, add feature, remove feature, fix bug, deploy, test, review code, write docs, security audit, I want to build, make me a, develop, start a project, continue working, what's next, ship it, refactor, improve, debug, go live, CI/CD, document this, plan this, architect this, or ANY software development request. This is the default entry point for all software development work.
 ---
 
 # IDK — Software Development Lifecycle Orchestrator
@@ -229,7 +229,7 @@ When the user gives input, determine:
 
 1. **Command** — which command matches (explicit or natural language)
 2. **Path** — is there an existing codebase?
-3. **Documents** — do requirements.md, plan.md, project-plan.md already exist?
+3. **Documents** — do requirements.md, plan.md, task-graph.md already exist?
 4. **Progress** — how far along is the project? Check `.sdlc/progress.md` first (authoritative), then fall back to file detection.
 5. **MCP servers** — discover all connected MCP servers and their available tools
 
@@ -284,7 +284,7 @@ Check `.sdlc/progress.md` FIRST for authoritative progress state. Fall back to f
 | `.sdlc/progress.md` | Authoritative progress record — read this first for `resume` |
 | `requirements.md` | Requirements phase complete |
 | `plan.md` | Architecture phase complete |
-| `project-plan.md` | Planning phase complete |
+| `task-graph.md` | Planning phase complete |
 | `src/` or code files | Development in progress/complete |
 | `review-report.md` | Code review done |
 | `bug-report.md` | QA done or in progress |
@@ -317,7 +317,7 @@ Record the resulting profile (which of these run): `code_review`, `qa`, `e2e_tes
 
 **⛔ The profile NEVER skips these — they are mandatory regardless of profile:**
 - Requirements interview + The Grill + requirements checkpoint (Step 3.5 / 6.5 of req-engineer)
-- Architecture (sw-architect), Planning (proj-manager), Development (sw-developer), and the integration pass after parallel dev
+- Architecture (sw-architect), Planning (task-planner), Development (sw-developer), and the integration pass after parallel dev
 
 The profile only governs the OPTIONAL phases (code review, QA, devops, docs, security audit) and the QA sub-tests (e2e, load, DAST, security scan, accessibility). When a phase is disabled, skip spawning that agent and say so in the status line. When a QA sub-test is disabled, tell the qa-engineer agent to skip it in its task prompt.
 
@@ -401,16 +401,16 @@ After architecture is approved, generate a visual preview for user approval befo
 
 📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: Preview, verdict: approved/skipped/rejected+reiteration count
 
-**Phase 3: Project Planning — spawn agent**
+**Phase 3: Task Planning — spawn agent**
 
-Spawn `proj-manager` agent with:
+Spawn `task-planner` agent with:
 - Input: plan.md + requirements.md paths
-- Task: full breakdown with design system if UI project
-- Wait for completion, read project-plan.md
+- Task: full breakdown with dependency waves, complexity tiers, agent assignments, and design system if UI project
+- Wait for completion, read task-graph.md
 
-CHECKPOINT: "Project broken into X epics, Y stories, Z tasks. Estimated: X sprints. Review project-plan.md."
+CHECKPOINT: "Project broken into X epics, Y tasks across Z dependency waves. Review task-graph.md."
 
-📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: Planning, output: project-plan.md, epic/story/task counts
+📝 **Ledger**: Append to `.sdlc/progress.md` — Phase: Planning, output: task-graph.md, epic/task/wave counts
 
 **Phase 4: Development — spawn agents (PARALLEL where the DAG allows)**
 
@@ -418,7 +418,7 @@ Development is usually the longest phase — parallelize it. Use the `sw-develop
 
 #### DAG Analysis (Mandatory Before Fan-Out)
 
-Before spawning any developer agent, analyze the dependency graph in `project-plan.md`:
+Before spawning any developer agent, analyze the dependency graph in `task-graph.md`:
 
 1. **Build the DAG**: For each epic/story, identify:
    - What it produces (files, modules, APIs, schemas)
@@ -454,7 +454,7 @@ After each epic, provide status: "Epic E-XXX complete. X tasks done, Y remaining
 
 For a large codebase, split the review across modules/layers and spawn multiple `code-reviewer` agents concurrently (one Agent call per slice, in a single message) — e.g. auth, API layer, data/DB, frontend. For a small codebase, one reviewer is enough.
 
-- Input per agent: its assigned files + plan.md + project-plan.md
+- Input per agent: its assigned files + plan.md + task-graph.md
 - Each agent runs tests/linters/SAST on its slice and returns findings by severity
 - **Merge** all agents' findings into a single `review-report.md` with one overall verdict (CHANGES REQUIRED if ANY slice has a BLOCKER/MAJOR)
 
@@ -565,7 +565,7 @@ PROJECT COMPLETE
 Files generated:
   - requirements.md    — X functional, Y non-functional requirements
   - plan.md            — Architecture with security
-  - project-plan.md    — X epics, Y stories, Z tasks
+  - task-graph.md    — X epics, Y tasks across Z waves
   - src/               — X files
   - tests/             — X tests, all passing (verified by running)
   - review-report.md   — APPROVED (verified by running linters + security scanners)
@@ -613,7 +613,7 @@ Execute whichever the user chooses:
 2. Requirements interview for new feature (orchestrator handles) — **MUST include The Grill (Step 3.5) and Prototype Walkthrough Choice (Step 6.5) from req-engineer. No exceptions.**
 3. Spawn sw-architect (hybrid mode — impact analysis)
 4. **Phase 2.5: Visual Preview** (if UI feature) — spawn preview, present to user
-5. Spawn proj-manager (tasks for new feature)
+5. Spawn task-planner (tasks for new feature)
 6. Spawn sw-developer -> code-reviewer -> qa-engineer (fix loops as needed)
 7. **Branch Disposition** — present the 4 options
 
@@ -624,7 +624,7 @@ Execute whichever the user chooses:
 1. Scan codebase for feature's files, routes, models, tests
 2. Spawn sw-architect (removal impact analysis)
 3. CHECKPOINT: "Removing [feature] affects [X] files. [Things that break]. Proceed?"
-4. Spawn proj-manager (removal tasks)
+4. Spawn task-planner (removal tasks)
 5. Spawn sw-developer -> code-reviewer -> qa-engineer (regression test)
 6. Spawn tech-writer (update docs)
 7. **Branch Disposition** — present the 4 options
@@ -635,7 +635,7 @@ Execute whichever the user chooses:
 
 1. Spawn sw-architect (codebase analysis mode)
 2. CHECKPOINT: "Found [X] issues. Top 3: [list]. Which to implement?"
-3. Spawn proj-manager (tasks for approved improvements)
+3. Spawn task-planner (tasks for approved improvements)
 4. Spawn sw-developer -> code-reviewer -> qa-engineer
 5. **Branch Disposition** — present the 4 options
 
@@ -693,7 +693,7 @@ If CRITICAL/HIGH findings, offer to spawn sw-developer to fix. Then re-audit spe
 1. Requirements interview (orchestrator) — **MUST include The Grill (Step 3.5) and Prototype Walkthrough Choice (Step 6.5) from req-engineer. No exceptions.**
 2. Spawn sw-architect -> plan.md
 3. **Phase 2.5: Visual Preview** (if UI project)
-4. Spawn proj-manager -> project-plan.md
+4. Spawn task-planner -> task-graph.md
 5. Stop — no code.
 
 📝 **Ledger**: Track all phases
@@ -714,7 +714,7 @@ If CRITICAL/HIGH findings, offer to spawn sw-developer to fix. Then re-audit spe
 
 | Rule | Details |
 |------|---------|
-| **Spawn by agentType** | Use the tuned subagent types — `sw-architect`, `proj-manager`, `sw-developer`, `code-reviewer`, `qa-engineer`, `devops-engineer`, `tech-writer`, `security-auditor`. Each agent definition pins its EXACT model ID with role-scoped tools — never override these with aliases like `opus`/`sonnet` when spawning; the agent files are the source of truth for model selection. `req-engineer` is NOT an agent — it runs in the main conversation. |
+| **Spawn by agentType** | Use the tuned subagent types — `sw-architect`, `task-planner`, `sw-developer`, `code-reviewer`, `qa-engineer`, `devops-engineer`, `tech-writer`, `security-auditor`. Each agent definition pins its EXACT model ID with role-scoped tools — never override these with aliases like `opus`/`sonnet` when spawning; the agent files are the source of truth for model selection. `req-engineer` is NOT an agent — it runs in the main conversation. `proj-manager` is available for standalone human-team planning but is NOT used in the AI pipeline. |
 | **Model selection: least powerful that handles the role** | Use the most capable model for judgment-heavy roles (architecture, review, QA, security) and cheaper/faster models for mechanical execution (dev, devops, docs, planning). This is already encoded in the agent definitions — do NOT override. If you need to spawn a one-off helper (e.g., a preview generator), use `sonnet` for code generation or `haiku` for pure mechanical tasks. Never use `opus` for tasks that don't require deep judgment. |
 | **Always pass full context** | Every agent gets paths to ALL relevant docs + working directory + its assigned scope |
 | **Parallelize independent work** | Fan out concurrently (multiple Agent calls in ONE message) when work shares no state: independent epics in development, modules in review, playbooks in QA, and DevOps + tech-writer at the end. This is the main speed lever — use it whenever the dependency DAG allows. |
@@ -737,7 +737,7 @@ If CRITICAL/HIGH findings, offer to spawn sw-developer to fix. Then re-audit spe
 |-------|--------------|--------|
 | **req-engineer** | WebSearch to validate competitive features; build UI prototypes in HTML/CSS; run examples to verify API specs | Requirements are real, feasible, not just wishful |
 | **sw-architect** | Compile/run existing codebase; run SAST tools (Bandit, Semgrep); run dependency scanners (npm audit, pip-audit); build POC for risky decisions | Architecture decisions are sound, not guesses |
-| **proj-manager** | Validate design system choices with actual component libraries; test responsive breakpoints with browser tools; verify accessibility with WCAG validators | Plan is realistic, not speculative |
+| **task-planner** | Validate design system choices with actual component libraries; test responsive breakpoints with browser tools; verify accessibility with WCAG validators | Plan is realistic, not speculative |
 | **sw-developer** | Run dev server; execute unit tests; run linter; build Docker image; verify code compiles; start the application | Code actually works, not just syntactically correct |
 | **code-reviewer** | Run tests; run linters; run SAST tools (Bandit, Semgrep, ESLint-security); build Docker image; scan dependencies for CVEs | Code review backed by tool evidence, not opinion |
 | **qa-engineer** | Run Playwright for UI; run curl/httpx for APIs; query database directly for data verification; run unit test suite; produce bug report with tool output | Bugs are REAL (with reproduction steps + proof) not speculative |
@@ -751,7 +751,7 @@ When spawning any agent, this orchestrator provides:
 
 1. **Working directory** — where code is, where to write output
 2. **Required tools pre-installed** — Node.js, Python, Docker, Git, Playwright, pytest, curl, etc.
-3. **Input documents** — requirements.md, plan.md, project-plan.md, existing code
+3. **Input documents** — requirements.md, plan.md, task-graph.md, existing code
 4. **Error recovery support** — if a tool fails, this orchestrator:
    - Catches the error
    - Analyzes what failed
@@ -765,8 +765,8 @@ When spawning any agent, this orchestrator provides:
 
 When developer agent spawns, it:
 ```bash
-# 1. Read project-plan.md to understand what to build
-cat project-plan.md
+# 1. Read task-graph.md to understand what to build
+cat task-graph.md
 
 # 2. Set up environment
 npm install  # Install dependencies
@@ -827,7 +827,7 @@ Project context:
 Input files:
 - requirements.md: [path] (if exists)
 - plan.md: [path] (if exists)
-- project-plan.md: [path] (if exists)
+- task-graph.md: [path] (if exists)
 - Existing code: [path] (if exists)
 - Progress ledger: .sdlc/progress.md (read for context on prior phases)
 
@@ -933,7 +933,7 @@ PROJECT COMPLETE
 Files generated:
   - requirements.md    — X functional, Y non-functional requirements
   - plan.md            — Architecture with security
-  - project-plan.md    — X epics, Y stories, Z tasks
+  - task-graph.md    — X epics, Y tasks across Z waves
   - .sdlc/preview/     — Visual preview (approved)
   - src/               — X files
   - tests/             — X tests, all passing (verified by running)
@@ -987,6 +987,6 @@ Use `/idk` whenever you have a software development task:
 - **"Review my code"** → runs code-reviewer
 - **"Write the API docs"** → runs tech-writer
 - **"Security audit this app"** → runs security-auditor
-- **"What should I build next?"** → suggests next stories from project-plan.md
+- **"What should I build next?"** → suggests next tasks from task-graph.md
 
 Or just describe what you want and let the orchestrator figure out which pipeline to run.
